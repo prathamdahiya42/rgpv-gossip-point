@@ -8,6 +8,8 @@ import FilterChips from '@/components/ui/FilterChips';
 import { POST_SECTIONS } from '@/types';
 import type { PostSection, PostView } from '@/types';
 
+import { seedSingleCampusStory, seedCampusStoriesIfEmpty } from '@/actions/seed';
+
 function FeedContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -23,6 +25,7 @@ function FeedContent() {
   const [nextCursor, setNextCursor] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
+  const [seeding, setSeeding] = useState(false);
   const [showSplash, setShowSplash] = useState(false);
 
   useEffect(() => {
@@ -47,6 +50,17 @@ function FeedContent() {
     setLoading(true);
     const res = await getFeedPosts(sec, sort);
     if (res.success && res.data) {
+      if (res.data.posts.length === 0) {
+        // Auto-seed initial authentic stories so students don't encounter a ghost town
+        await seedCampusStoriesIfEmpty();
+        const retry = await getFeedPosts(sec, sort);
+        if (retry.success && retry.data && retry.data.posts.length > 0) {
+          setPosts(retry.data.posts);
+          setNextCursor(retry.data.nextCursor);
+          setLoading(false);
+          return;
+        }
+      }
       setPosts(res.data.posts);
       setNextCursor(res.data.nextCursor);
     }
@@ -61,6 +75,14 @@ function FeedContent() {
     const sec = val as PostSection;
     setSection(sec);
     router.replace(`/?s=${sec}`);
+  };
+
+  const handleSpillStory = async () => {
+    if (seeding) return;
+    setSeeding(true);
+    await seedSingleCampusStory(section);
+    await loadFeed(section, sortBy);
+    setSeeding(false);
   };
 
   const handleLoadMore = async () => {
@@ -154,6 +176,13 @@ function FeedContent() {
           <p className="font-body text-xs text-ink-soft mt-1">
             Be the first to spill the tea or confess anonymously!
           </p>
+          <button
+            onClick={handleSpillStory}
+            disabled={seeding}
+            className="mt-4 inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-green/10 hover:bg-green/20 text-green font-medium text-xs transition-colors disabled:opacity-50"
+          >
+            {seeding ? 'Generating tea... ⏳' : '✨ Spill a Campus Story'}
+          </button>
         </div>
       ) : (
         <div className="space-y-4">

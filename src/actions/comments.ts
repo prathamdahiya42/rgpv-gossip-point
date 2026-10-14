@@ -7,7 +7,8 @@ import type { ServerActionResponse, CommentView } from '@/types';
 
 export async function createComment(
   postId: string,
-  body: string
+  body: string,
+  parentId?: string
 ): Promise<ServerActionResponse> {
   try {
     const profile = await requireProfile();
@@ -31,15 +32,33 @@ export async function createComment(
       return { success: false, error: 'Rate limit reached: max 20 comments per hour' };
     }
 
+    // Try inserting with parent_id, fallback without if column not yet migrated
+    const insertPayload: Record<string, any> = {
+      post_id: validated.data.postId,
+      author_id: profile.id,
+      body: validated.data.body,
+    };
+    if (parentId) {
+      insertPayload.parent_id = parentId;
+    }
+
     const { error: insertError } = await supabase
       .from('comments')
-      .insert({
-        post_id: validated.data.postId,
-        author_id: profile.id,
-        body: validated.data.body,
-      });
+      .insert(insertPayload);
 
-    if (insertError) throw insertError;
+    if (insertError) {
+      // If error was missing parent_id column, retry without parent_id
+      if (parentId && insertError.message?.includes('parent_id')) {
+        const { error: retryError } = await supabase.from('comments').insert({
+          post_id: validated.data.postId,
+          author_id: profile.id,
+          body: validated.data.body,
+        });
+        if (retryError) throw retryError;
+      } else {
+        throw insertError;
+      }
+    }
 
     return { success: true };
   } catch (error: unknown) {
@@ -68,15 +87,35 @@ export async function getComments(postId: string): Promise<ServerActionResponse<
 
     if (error) throw error;
 
-    const comments: CommentView[] = (data || []).map((row: any) => ({
+    // Build threaded comments (parent comments with 1-level nested replies)
+    const rawComments: CommentView[] = (data || []).map((row: any) => ({
       id: row.id,
       post_id: row.post_id,
+      parent_id: row.parent_id || null,
       body: row.body,
       created_at: row.created_at,
       handle: row.profiles?.handle || 'Anonymous',
+      replies: [],
     }));
 
-    return { success: true, data: comments };
+    const topLevel: CommentView[] = [];
+    const commentMap = new Map<string, CommentView>();
+
+    rawComments.forEach((c) => {
+      commentMap.set(c.id, c);
+    });
+
+    rawComments.forEach((c) => {
+      if (c.parent_id && commentMap.has(c.parent_id)) {
+        const parent = commentMap.get(c.parent_id)!;
+        parent.replies = parent.replies || [];
+        parent.replies.push(c);
+      } else {
+        topLevel.push(c);
+      }
+    });
+
+    return { success: true, data: topLevel };
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : 'Failed to fetch comments';
     return { success: false, error: message };

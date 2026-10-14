@@ -6,7 +6,15 @@ export type PostSection = 'crushes' | 'gossip' | 'campus' | 'garba';
 export type ReactionEmoji = '🔥' | '😂' | '💀';
 export type ReportTargetType = 'post' | 'comment' | 'message' | 'user';
 export type MatchQueueStatus = 'waiting' | 'matched' | 'cancelled';
-export type BlindDateMode = 'general' | 'garba';
+export type BlindDateMode = 'general' | 'garba' | 'music';
+export type MusicVibe = 'rap' | 'chatpata' | 'punjabi' | 'indie' | 'lofi' | 'garba';
+
+export interface SharedTrack {
+  youtubeId: string;
+  title: string;
+  sharedBy?: string;
+  timestamp?: number;
+}
 
 export interface Profile {
   id: string; // auth.uid
@@ -31,6 +39,7 @@ export interface Comment {
   id: string;
   post_id: string;
   author_id: string;
+  parent_id?: string | null;
   body: string;
   is_hidden: boolean;
   report_count: number;
@@ -94,7 +103,11 @@ export interface PostView {
 export interface CommentView {
   id: string;
   post_id: string;
+  parent_id?: string | null;
   body: string;
   created_at: string;
   handle: string;
+  replies?: CommentView[];
+  likes_count?: number;
+  user_liked?: boolean;
 }

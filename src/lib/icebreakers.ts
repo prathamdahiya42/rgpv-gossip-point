@@ -1,4 +1,5 @@
 // Fun campus-themed icebreakers for RGPV Blind Date
+import type { BlindDateMode } from '@/types';
 
 export const GENERAL_ICEBREAKERS = [
   "What's your branch and sem (no names allowed)?",
@@ -48,9 +49,29 @@ export const GARBA_ICEBREAKERS = [
   "What branch/sem are you in, and is your department planning a whole group outing?"
 ] as const;
 
-export const ICEBREAKERS = [...GENERAL_ICEBREAKERS, ...GARBA_ICEBREAKERS];
+export const MUSIC_ICEBREAKERS = [
+  "What's the #1 song you listen to on repeat when traveling in the UIT bus? 🎧",
+  "Seedhe Maut or DIVINE: pick your Desi Hip-Hop GOAT 🐐",
+  "Do you listen to Bollywood 90s hits guilt-free or secretly in private? 🌶️",
+  "What is your current 2 AM late-night study session track?",
+  "Diljit Dosanjh concert or Anuv Jain acoustic live: which ticket are you fighting for? 🎫",
+  "Who is an artist you love that you think nobody else on our campus knows about?",
+  "Can you judge someone based on their Spotify Wrapped? Be honest! 😂",
+  "Drop one song that immediately changes your mood from 0 to 100 🚀",
+  "Do you prefer listening with bass boosted in headphones, or sharing earphones?",
+  "If our engineering campus life was an album, what would the title track be?",
+  "What's a trending song everyone is hyping right now that you secretly can't stand?",
+  "Paste the link or title of the last song you played on YouTube or Spotify! 🎵"
+] as const;
 
-export function getRandomIcebreaker(mode: 'general' | 'garba' = 'general'): string {
-  const pool = mode === 'garba' ? GARBA_ICEBREAKERS : GENERAL_ICEBREAKERS;
-  return pool[Math.floor(Math.random() * pool.length)];
+export const ICEBREAKERS = [...GENERAL_ICEBREAKERS, ...GARBA_ICEBREAKERS, ...MUSIC_ICEBREAKERS];
+
+export function getRandomIcebreaker(mode: BlindDateMode = 'general'): string {
+  if (mode === 'garba') {
+    return GARBA_ICEBREAKERS[Math.floor(Math.random() * GARBA_ICEBREAKERS.length)];
+  }
+  if (mode === 'music') {
+    return MUSIC_ICEBREAKERS[Math.floor(Math.random() * MUSIC_ICEBREAKERS.length)];
+  }
+  return GENERAL_ICEBREAKERS[Math.floor(Math.random() * GENERAL_ICEBREAKERS.length)];
 }

@@ -9,9 +9,33 @@ create extension if not exists "uuid-ossp";
 create extension if not exists "pgcrypto";
 
 -- ============================================================
+-- 0. CLEANUP (Drop old views and conflicting tables from previous version)
+-- ============================================================
+drop view if exists public.posts_view cascade;
+drop view if exists public.comments_view cascade;
+drop table if exists public.match_messages cascade;
+drop table if exists public.matches cascade;
+drop table if exists public.match_queue cascade;
+drop table if exists public.reports cascade;
+drop table if exists public.reactions cascade;
+drop table if exists public.comments cascade;
+drop table if exists public.posts cascade;
+drop table if exists public.profiles cascade;
+
+-- Clean up any leftover tables from the old 11-table version
+drop table if exists public.dms cascade;
+drop table if exists public.dm_messages cascade;
+drop table if exists public.communities cascade;
+drop table if exists public.community_members cascade;
+drop table if exists public.playlists cascade;
+drop table if exists public.blocks cascade;
+drop table if exists public.otp_verifications cascade;
+drop table if exists public.user_tiers cascade;
+
+-- ============================================================
 -- 1. PROFILES (Anonymous Handle & Status)
 -- ============================================================
-create table if not exists public.profiles (
+create table public.profiles (
   id uuid primary key references auth.users(id) on delete cascade,
   handle text not null,
   is_banned boolean not null default false,
@@ -44,11 +68,13 @@ create table if not exists public.comments (
   id uuid primary key default uuid_generate_v4(),
   post_id uuid not null references public.posts(id) on delete cascade,
   author_id uuid not null references public.profiles(id) on delete cascade,
+  parent_id uuid references public.comments(id) on delete cascade,
   body text not null check (char_length(body) >= 1 and char_length(body) <= 300),
   is_hidden boolean not null default false,
   report_count integer not null default 0,
   created_at timestamptz not null default now()
 );
+alter table public.comments add column if not exists parent_id uuid references public.comments(id) on delete cascade;
 
 -- ============================================================
 -- 4. REACTIONS (One reaction per user per post: 🔥, 😂, 💀)
@@ -80,10 +106,12 @@ create table if not exists public.reports (
 create table if not exists public.match_queue (
   user_id uuid primary key references public.profiles(id) on delete cascade,
   status text not null default 'waiting' check (status in ('waiting', 'matched', 'cancelled')),
-  mode text not null default 'general' check (mode in ('general', 'garba')),
+  mode text not null default 'general' check (mode in ('general', 'garba', 'music')),
+  vibe text,
   created_at timestamptz not null default now()
 );
 alter table public.match_queue add column if not exists mode text not null default 'general';
+alter table public.match_queue add column if not exists vibe text;
 
 -- ============================================================
 -- 7. MATCHES (Active Blind Dates)
@@ -92,13 +120,15 @@ create table if not exists public.matches (
   id uuid primary key default uuid_generate_v4(),
   user_a uuid not null references public.profiles(id) on delete cascade,
   user_b uuid not null references public.profiles(id) on delete cascade,
-  mode text not null default 'general' check (mode in ('general', 'garba')),
+  mode text not null default 'general' check (mode in ('general', 'garba', 'music')),
+  vibe text,
   started_at timestamptz not null default now(),
   ends_at timestamptz not null default (now() + interval '5 minutes'),
   left_at timestamptz,
   left_by uuid references public.profiles(id)
 );
 alter table public.matches add column if not exists mode text not null default 'general';
+alter table public.matches add column if not exists vibe text;
 
 -- ============================================================
 -- 8. MATCH MESSAGES (Real-time 3-minute chat messages)

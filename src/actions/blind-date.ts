@@ -10,27 +10,41 @@ export interface MatchInfo {
   partnerHandle: string;
   partnerId: string; // Internal for reporting only, kept opaque
   mode: BlindDateMode;
+  vibe?: string | null;
   startedAt: string;
   endsAt: string;
   leftAt: string | null;
   serverTime: string;
 }
 
-export async function joinBlindDate(mode: BlindDateMode = 'general'): Promise<
+import { parseYouTubeId } from '@/lib/music';
+
+export async function joinBlindDate(
+  mode: BlindDateMode = 'general',
+  vibe?: string
+): Promise<
   ServerActionResponse<{ status: 'waiting' | 'matched'; matchId: string | null; endsAt: string | null }>
 > {
   try {
     const profile = await requireProfile();
     const supabase = await createClient();
 
-    // Call join_blind_date with mode parameter (with fallback for legacy RPC without parameter)
-    let { data, error } = await supabase.rpc('join_blind_date', { p_mode: mode });
+    // Call join_blind_date with mode and vibe parameter (with fallbacks)
+    let { data, error } = await supabase.rpc('join_blind_date', {
+      p_mode: mode,
+      p_vibe: vibe || null,
+    });
 
-    if (error && error.message.includes('p_mode')) {
-      // Fallback if RPC hasn't been re-executed with p_mode in Supabase
-      const fallback = await supabase.rpc('join_blind_date');
-      data = fallback.data;
-      error = fallback.error;
+    if (error && (error.message.includes('p_vibe') || error.message.includes('function'))) {
+      const fallbackWithMode = await supabase.rpc('join_blind_date', { p_mode: mode });
+      if (fallbackWithMode.error && fallbackWithMode.error.message.includes('p_mode')) {
+        const pureFallback = await supabase.rpc('join_blind_date');
+        data = pureFallback.data;
+        error = pureFallback.error;
+      } else {
+        data = fallbackWithMode.data;
+        error = fallbackWithMode.error;
+      }
     }
 
     if (error) throw error;
@@ -196,6 +210,37 @@ export async function reportAndLeaveStranger(
     return { success: true };
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Failed to report stranger';
+    return { success: false, error: message };
+  }
+}
+
+export async function shareMatchTrack(
+  matchId: string,
+  urlOrId: string,
+  title?: string
+): Promise<ServerActionResponse<{ youtubeId: string; title: string }>> {
+  try {
+    const profile = await requireProfile();
+    const ytId = parseYouTubeId(urlOrId);
+    if (!ytId) {
+      return { success: false, error: 'Please enter a valid YouTube video link or ID' };
+    }
+
+    const cleanTitle = (title || 'Shared Song').slice(0, 80).replace(/[|]/g, '');
+    const messageBody = `[Now Playing]: ${ytId}|${cleanTitle}`;
+
+    const supabase = await createClient();
+    const { error } = await supabase.from('match_messages').insert({
+      match_id: matchId,
+      sender_id: profile.id,
+      body: messageBody,
+    });
+
+    if (error) throw error;
+
+    return { success: true, data: { youtubeId: ytId, title: cleanTitle } };
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : 'Failed to share track';
     return { success: false, error: message };
   }
 }

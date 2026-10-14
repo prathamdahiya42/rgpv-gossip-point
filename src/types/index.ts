@@ -36,3 +36,12 @@ export const REPORT_REASONS = [
 export const HOT_THRESHOLD = 10;
 export const AUTO_HIDE_REPORT_THRESHOLD = 3;
 export const BLIND_DATE_DURATION_SECONDS = 300; // 5 minutes
+
+export const MUSIC_VIBES = [
+  { id: 'rap', label: 'Desi Hip-Hop & Rap', icon: '🔥', description: 'Seedhe Maut, DIVINE, KR$NA, Talwiinder' },
+  { id: 'chatpata', label: 'Bollywood Chatpata', icon: '🌶️', description: '90s party hits, masala dance bangers' },
+  { id: 'punjabi', label: 'Punjabi Pop & Bass', icon: '🪕', description: 'Diljit Dosanjh, Karan Aujla, Shubh' },
+  { id: 'indie', label: 'Hindi Indie & Acoustic', icon: '☕', description: 'Anuv Jain, The Local Train, Prateek Kuhad' },
+  { id: 'lofi', label: 'Midnight Lofi Chill', icon: '🌙', description: 'Late night study, chill beats' },
+  { id: 'garba', label: 'Festive & Garba Remix', icon: '🪩', description: 'Dhol tasha, modern EDM Garba mixes' },
+] as const;

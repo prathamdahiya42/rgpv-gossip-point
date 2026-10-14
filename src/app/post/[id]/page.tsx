@@ -58,6 +58,21 @@ export default function PostDetailPage() {
     });
   };
 
+  const handleReply = async (parentId: string, body: string): Promise<boolean> => {
+    const result = await createComment(postId, body, parentId);
+    if (result.success) {
+      const commentsResult = await getComments(postId);
+      if (commentsResult.success && commentsResult.data) {
+        setComments(commentsResult.data);
+      }
+      showToast('Reply posted ↩️', 'success');
+      return true;
+    } else {
+      showToast(result.error || 'Failed to reply', 'error');
+      return false;
+    }
+  };
+
   if (loading) {
     return (
       <div className="py-20 text-center">
@@ -142,10 +157,10 @@ export default function PostDetailPage() {
       {/* Comments section */}
       <div className="mt-6 bg-card rounded-2xl border border-ink/5 p-4">
         <h2 className="font-display text-sm font-bold text-ink mb-2">
-          Comments ({comments.length})
+          Comments ({comments.reduce((acc, c) => acc + 1 + (c.replies?.length || 0), 0)})
         </h2>
 
-        <CommentThread comments={comments} />
+        <CommentThread comments={comments} onReply={handleReply} />
 
         {/* Comment input */}
         <div className="mt-4 flex gap-2">

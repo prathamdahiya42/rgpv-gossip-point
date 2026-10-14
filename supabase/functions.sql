@@ -115,7 +115,7 @@ execute function public.enforce_match_message_time();
 -- 3. BLIND DATE MATCHER: RPC join_blind_date()
 -- Automated Postgres Matcher (No AI/LLM cost, FOR UPDATE SKIP LOCKED)
 -- ============================================================
-create or replace function public.join_blind_date(p_mode text default 'general')
+create or replace function public.join_blind_date(p_mode text default 'general', p_vibe text default null)
 returns jsonb
 language plpgsql
 security definer
@@ -125,6 +125,7 @@ declare
   v_profile record;
   v_existing_match_id uuid;
   v_partner_id uuid;
+  v_partner_vibe text;
   v_new_match_id uuid;
   v_ends_at timestamptz;
 begin
@@ -167,30 +168,52 @@ begin
   delete from public.match_queue
   where created_at < (now() - interval '45 seconds');
 
-  -- 3. Look for another waiting user with matching mode and row locking
-  select q.user_id into v_partner_id
-  from public.match_queue q
-  where q.status = 'waiting'
-    and q.mode = p_mode
-    and q.user_id <> v_current_user_id
-    and q.created_at >= (now() - interval '45 seconds')
-    -- Not matched in the last 10 minutes
-    and not exists (
-      select 1 from public.matches m
-      where ((m.user_a = v_current_user_id and m.user_b = q.user_id)
-          or (m.user_b = v_current_user_id and m.user_a = q.user_id))
-        and m.started_at >= (now() - interval '10 minutes')
-    )
-  order by q.created_at asc
-  for update skip locked
-  limit 1;
+  -- 3. Look for another waiting user
+  -- If p_mode = 'music' and p_vibe is provided, try exact vibe match first
+  if p_mode = 'music' and p_vibe is not null then
+    select q.user_id, q.vibe into v_partner_id, v_partner_vibe
+    from public.match_queue q
+    where q.status = 'waiting'
+      and q.mode = 'music'
+      and q.vibe = p_vibe
+      and q.user_id <> v_current_user_id
+      and q.created_at >= (now() - interval '45 seconds')
+      and not exists (
+        select 1 from public.matches m
+        where ((m.user_a = v_current_user_id and m.user_b = q.user_id)
+            or (m.user_b = v_current_user_id and m.user_a = q.user_id))
+          and m.started_at >= (now() - interval '10 minutes')
+      )
+    order by q.created_at asc
+    for update skip locked
+    limit 1;
+  end if;
+
+  -- Fallback: any waiting user in the same mode
+  if v_partner_id is null then
+    select q.user_id, q.vibe into v_partner_id, v_partner_vibe
+    from public.match_queue q
+    where q.status = 'waiting'
+      and q.mode = p_mode
+      and q.user_id <> v_current_user_id
+      and q.created_at >= (now() - interval '45 seconds')
+      and not exists (
+        select 1 from public.matches m
+        where ((m.user_a = v_current_user_id and m.user_b = q.user_id)
+            or (m.user_b = v_current_user_id and m.user_a = q.user_id))
+          and m.started_at >= (now() - interval '10 minutes')
+      )
+    order by q.created_at asc
+    for update skip locked
+    limit 1;
+  end if;
 
   -- 4. If partner found, create match!
   if v_partner_id is not null then
     v_ends_at := now() + interval '5 minutes';
 
-    insert into public.matches (user_a, user_b, mode, started_at, ends_at)
-    values (v_current_user_id, v_partner_id, p_mode, now(), v_ends_at)
+    insert into public.matches (user_a, user_b, mode, vibe, started_at, ends_at)
+    values (v_current_user_id, v_partner_id, p_mode, coalesce(p_vibe, v_partner_vibe), now(), v_ends_at)
     returning id into v_new_match_id;
 
     -- Remove both from queue
@@ -204,11 +227,11 @@ begin
     );
   end if;
 
-  -- 5. Otherwise, upsert waiting status in queue with selected mode
-  insert into public.match_queue (user_id, status, mode, created_at)
-  values (v_current_user_id, 'waiting', p_mode, now())
+  -- 5. Otherwise, upsert waiting status in queue with selected mode and vibe
+  insert into public.match_queue (user_id, status, mode, vibe, created_at)
+  values (v_current_user_id, 'waiting', p_mode, p_vibe, now())
   on conflict (user_id)
-  do update set status = 'waiting', mode = p_mode, created_at = now();
+  do update set status = 'waiting', mode = p_mode, vibe = p_vibe, created_at = now();
 
   return jsonb_build_object(
     'status', 'waiting',
