@@ -1,100 +1,82 @@
 'use server';
 
 import { createClient } from '@/lib/supabase/server';
-import { requireAuth } from '@/lib/auth/session';
-import type { ServerActionResponse, Comment, CommentWithReactions } from '@/types';
+import { requireProfile } from '@/lib/auth/session';
+import { commentSchema } from '@/lib/validation';
+import type { ServerActionResponse, CommentView } from '@/types';
 
 export async function createComment(
   postId: string,
-  content: string
-): Promise<ServerActionResponse<Comment>> {
+  body: string
+): Promise<ServerActionResponse> {
   try {
-    const user = await requireAuth();
+    const profile = await requireProfile();
+    const validated = commentSchema.safeParse({ postId, body: body.trim() });
+
+    if (!validated.success) {
+      return { success: false, error: validated.error.issues[0]?.message || 'Invalid comment' };
+    }
+
     const supabase = await createClient();
 
-    const { data: comment, error } = await supabase
+    // Check rate limit: max 20 comments per hour
+    const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+    const { count, error: countError } = await supabase
+      .from('comments')
+      .select('*', { count: 'exact', head: true })
+      .eq('author_id', profile.id)
+      .gt('created_at', oneHourAgo);
+
+    if (!countError && count !== null && count >= 20) {
+      return { success: false, error: 'Rate limit reached: max 20 comments per hour' };
+    }
+
+    const { error: insertError } = await supabase
       .from('comments')
       .insert({
-        post_id: postId,
-        user_id: user.id,
-        pseudonym_shown: user.pseudonym,
-        content: content.trim(),
-      })
-      .select()
-      .single();
+        post_id: validated.data.postId,
+        author_id: profile.id,
+        body: validated.data.body,
+      });
 
-    if (error) throw error;
-    return { success: true, data: comment };
+    if (insertError) throw insertError;
+
+    return { success: true };
   } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : 'Failed to create comment';
+    const message = error instanceof Error ? error.message : 'Failed to post comment';
     return { success: false, error: message };
   }
 }
 
-export async function getComments(
-  postId: string,
-  cursor?: string,
-  limit: number = 50
-): Promise<ServerActionResponse<{ comments: CommentWithReactions[]; nextCursor: string | null }>> {
+export async function getComments(postId: string): Promise<ServerActionResponse<CommentView[]>> {
   try {
     const supabase = await createClient();
 
-    let query = supabase
+    // Query non-hidden comments joining profiles to get handle without exposing author_id
+    const { data, error } = await supabase
       .from('comments')
-      .select('*')
+      .select(`
+        id,
+        post_id,
+        body,
+        created_at,
+        profiles!inner(handle)
+      `)
       .eq('post_id', postId)
-      .eq('status', 'visible')
-      .order('created_at', { ascending: true })
-      .limit(limit);
+      .eq('is_hidden', false)
+      .order('created_at', { ascending: true });
 
-    if (cursor) {
-      query = query.gt('created_at', cursor);
-    }
-
-    const { data: comments, error } = await query;
     if (error) throw error;
 
-    // Get current user
-    const { data: { user: authUser } } = await supabase.auth.getUser();
-    let currentUserId: string | null = null;
-    if (authUser) {
-      const { data: myUser } = await supabase
-        .from('users')
-        .select('id')
-        .eq('auth_id', authUser.id)
-        .single();
-      currentUserId = myUser?.id || null;
-    }
+    const comments: CommentView[] = (data || []).map((row: any) => ({
+      id: row.id,
+      post_id: row.post_id,
+      body: row.body,
+      created_at: row.created_at,
+      handle: row.profiles?.handle || 'Anonymous',
+    }));
 
-    // Enrich with reactions
-    const enrichedComments: CommentWithReactions[] = await Promise.all(
-      (comments || []).map(async (comment) => {
-        const { data: reactions } = await supabase
-          .from('reactions')
-          .select('type, user_id')
-          .eq('target_type', 'comment')
-          .eq('target_id', comment.id);
-
-        const reactionCounts: Record<string, number> = {};
-        const userReacted: string[] = [];
-        (reactions || []).forEach(r => {
-          reactionCounts[r.type] = (reactionCounts[r.type] || 0) + 1;
-          if (r.user_id === currentUserId) userReacted.push(r.type);
-        });
-
-        return {
-          ...comment,
-          reaction_counts: reactionCounts,
-          user_reacted: userReacted,
-        } as CommentWithReactions;
-      })
-    );
-
-    const nextCursor = enrichedComments.length === limit
-      ? enrichedComments[enrichedComments.length - 1].created_at
-      : null;
-
-    return { success: true, data: { comments: enrichedComments, nextCursor } };
+    return { success: true, data: comments };
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : 'Failed to fetch comments';
     return { success: false, error: message };

@@ -1,7 +1,7 @@
 export * from './database';
 
 // ============================================================
-// App-level utility types
+// App-level utility types & constants
 // ============================================================
 
 export interface ServerActionResponse<T = void> {
@@ -10,29 +10,29 @@ export interface ServerActionResponse<T = void> {
   error?: string;
 }
 
-export interface PaginatedResponse<T> {
-  items: T[];
+export interface PaginatedPosts {
+  items: import('./database').PostView[];
   nextCursor: string | null;
   hasMore: boolean;
 }
 
-export interface PageProps {
-  params: Promise<Record<string, string>>;
-  searchParams: Promise<Record<string, string | string[] | undefined>>;
-}
+export const REACTION_EMOJIS = ['🔥', '😂', '💀'] as const;
 
-export const REACTION_EMOJIS = ['👍', '🔥', '😂', '💀'] as const;
-
-export const REPORT_REASONS = [
-  'Harassment or bullying',
-  'Spam or scam',
-  'Hate speech',
-  'Personal information shared',
-  'Inappropriate content',
-  'Other',
+export const POST_SECTIONS = [
+  { id: 'crushes', label: 'Crushes 💘', shortLabel: 'Crushes' },
+  { id: 'gossip', label: 'Gossip 🗣️', shortLabel: 'Gossip' },
+  { id: 'campus', label: 'Campus 🏫', shortLabel: 'Campus' },
+  { id: 'garba', label: 'Garba 🪩', shortLabel: 'Garba' },
 ] as const;
 
-export const GENERAL_PLAYLISTS = ['Morning Vibes', 'Bathroom Bangers', 'Night Mode'] as const;
+export const REPORT_REASONS = [
+  'spam',
+  'harassment',
+  'sexual',
+  'personal info',
+  'other',
+] as const;
 
-export const HOT_THRESHOLD = 15; // reactions needed for coral tape
-export const REPORT_AUTO_HIDE_THRESHOLD = 3;
+export const HOT_THRESHOLD = 10;
+export const AUTO_HIDE_REPORT_THRESHOLD = 3;
+export const BLIND_DATE_DURATION_SECONDS = 300; // 5 minutes

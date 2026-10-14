@@ -1,56 +1,49 @@
 'use server';
 
 import { createClient } from '@/lib/supabase/server';
-import { requireVerified } from '@/lib/auth/session';
-import type { ServerActionResponse, Post, PostWithCommunity } from '@/types';
+import { requireProfile } from '@/lib/auth/session';
+import { postSchema } from '@/lib/validation';
+import type { ServerActionResponse, PostSection, PostView, ReactionEmoji } from '@/types';
 
 export async function createPost(
-  communityId: string,
-  content: string
-): Promise<ServerActionResponse<Post>> {
+  section: PostSection,
+  body: string
+): Promise<ServerActionResponse<{ id: string }>> {
   try {
-    const user = await requireVerified();
+    const profile = await requireProfile();
+    const validated = postSchema.safeParse({ section, body: body.trim() });
+
+    if (!validated.success) {
+      return { success: false, error: validated.error.issues[0]?.message || 'Invalid post' };
+    }
+
     const supabase = await createClient();
 
-    // Check community exists and is approved
-    const { data: community, error: commError } = await supabase
-      .from('communities')
-      .select('*')
-      .eq('id', communityId)
-      .eq('status', 'approved')
-      .single();
+    // Check rate limit: max 5 posts per hour per user
+    const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+    const { count, error: countError } = await supabase
+      .from('posts')
+      .select('*', { count: 'exact', head: true })
+      .eq('author_id', profile.id)
+      .gt('created_at', oneHourAgo);
 
-    if (commError || !community) {
-      throw new Error('Community not found or not approved');
+    if (!countError && count !== null && count >= 5) {
+      return { success: false, error: 'Rate limit reached: max 5 posts per hour' };
     }
 
-    // Check whitelist if community is in approved_posters mode
-    if (community.mode === 'approved_posters') {
-      const { data: poster } = await supabase
-        .from('community_posters')
-        .select('id')
-        .eq('community_id', communityId)
-        .eq('user_id', user.id)
-        .single();
-
-      if (!poster) {
-        throw new Error('You are not an approved poster in this community');
-      }
-    }
-
-    const { data: post, error } = await supabase
+    const { data: post, error: insertError } = await supabase
       .from('posts')
       .insert({
-        community_id: communityId,
-        user_id: user.id,
-        pseudonym_shown: user.pseudonym,
-        content: content.trim(),
+        author_id: profile.id,
+        section: validated.data.section,
+        body: validated.data.body,
       })
-      .select()
+      .select('id')
       .single();
 
-    if (error) throw error;
-    return { success: true, data: post };
+    if (insertError) throw insertError;
+
+    return { success: true, data: { id: post.id } };
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : 'Failed to create post';
     return { success: false, error: message };
@@ -58,26 +51,75 @@ export async function createPost(
 }
 
 export async function getFeedPosts(
-  communityId?: string,
+  section: PostSection = 'gossip',
+  sortBy: 'new' | 'hot' = 'new',
   cursor?: string,
   limit: number = 20
-): Promise<ServerActionResponse<{ posts: PostWithCommunity[]; nextCursor: string | null }>> {
+): Promise<ServerActionResponse<{ posts: PostView[]; nextCursor: string | null }>> {
   try {
     const supabase = await createClient();
+    const { data: { user } } = await supabase.auth.getUser();
 
+    // 1. Try SQL RPC with database-computed Hot/New ranking
+    const { data: rpcData, error: rpcError } = await supabase.rpc('get_feed_posts', {
+      p_section: section,
+      p_sort: sortBy,
+      p_cursor: cursor || null,
+      p_limit: limit,
+    });
+
+    if (!rpcError && Array.isArray(rpcData)) {
+      // Enrich with user's own reaction if signed in
+      const postsWithUserReaction: PostView[] = await Promise.all(
+        rpcData.map(async (row: any) => {
+          let userReaction: ReactionEmoji | null = null;
+          if (user) {
+            const { data: myReaction } = await supabase
+              .from('reactions')
+              .select('emoji')
+              .eq('post_id', row.id)
+              .eq('user_id', user.id)
+              .maybeSingle();
+            userReaction = myReaction?.emoji || null;
+          }
+
+          return {
+            id: row.id,
+            section: row.section as PostSection,
+            body: row.body,
+            created_at: row.created_at,
+            handle: row.handle,
+            reaction_counts: {
+              '🔥': Number(row.fire_count || 0),
+              '😂': Number(row.laugh_count || 0),
+              '💀': Number(row.skull_count || 0),
+            },
+            comment_count: Number(row.comment_count || 0),
+            user_reaction: userReaction,
+          };
+        })
+      );
+
+      const nextCursor =
+        rpcData.length === limit ? rpcData[rpcData.length - 1].created_at : null;
+
+      return { success: true, data: { posts: postsWithUserReaction, nextCursor } };
+    }
+
+    // 2. Resilient fallback to direct table query if RPC is not yet in Supabase
     let query = supabase
       .from('posts')
       .select(`
-        *,
-        community:communities!inner(id, name)
+        id,
+        section,
+        body,
+        created_at,
+        profiles!inner(handle)
       `)
-      .eq('status', 'visible')
+      .eq('section', section)
+      .eq('is_hidden', false)
       .order('created_at', { ascending: false })
       .limit(limit);
-
-    if (communityId) {
-      query = query.eq('community_id', communityId);
-    }
 
     if (cursor) {
       query = query.lt('created_at', cursor);
@@ -86,62 +128,51 @@ export async function getFeedPosts(
     const { data: posts, error } = await query;
     if (error) throw error;
 
-    // Fetch reaction counts and comment counts for each post
-    const enrichedPosts: PostWithCommunity[] = await Promise.all(
-      (posts || []).map(async (post) => {
-        // Get reaction counts
-        const { data: reactions } = await supabase
-          .from('reactions')
-          .select('type')
-          .eq('target_type', 'post')
-          .eq('target_id', post.id);
+    const enrichedPosts: PostView[] = await Promise.all(
+      (posts || []).map(async (p: any) => {
+        const [reactionsRes, commentsCountRes, myReactionRes] = await Promise.all([
+          supabase.from('reactions').select('emoji').eq('post_id', p.id),
+          supabase.from('comments').select('*', { count: 'exact', head: true }).eq('post_id', p.id).eq('is_hidden', false),
+          user
+            ? supabase.from('reactions').select('emoji').eq('post_id', p.id).eq('user_id', user.id).maybeSingle()
+            : Promise.resolve({ data: null }),
+        ]);
 
-        const reactionCounts: Record<string, number> = {};
-        (reactions || []).forEach(r => {
-          reactionCounts[r.type] = (reactionCounts[r.type] || 0) + 1;
+        const reactionCounts: Record<ReactionEmoji, number> = {
+          '🔥': 0,
+          '😂': 0,
+          '💀': 0,
+        };
+
+        (reactionsRes.data || []).forEach((r: { emoji: ReactionEmoji }) => {
+          if (reactionCounts[r.emoji] !== undefined) {
+            reactionCounts[r.emoji] += 1;
+          }
         });
 
-        // Get comment count
-        const { count } = await supabase
-          .from('comments')
-          .select('id', { count: 'exact', head: true })
-          .eq('post_id', post.id)
-          .eq('status', 'visible');
-
-        // Get current user's reactions
-        const { data: { user: authUser } } = await supabase.auth.getUser();
-        let userReacted: string[] = [];
-        if (authUser) {
-          const { data: myUser } = await supabase
-            .from('users')
-            .select('id')
-            .eq('auth_id', authUser.id)
-            .single();
-
-          if (myUser) {
-            const { data: myReactions } = await supabase
-              .from('reactions')
-              .select('type')
-              .eq('target_type', 'post')
-              .eq('target_id', post.id)
-              .eq('user_id', myUser.id);
-            userReacted = (myReactions || []).map(r => r.type);
-          }
-        }
-
         return {
-          ...post,
-          community: Array.isArray(post.community) ? post.community[0] : post.community,
-          reaction_counts: reactionCounts as Record<string, number>,
-          comment_count: count || 0,
-          user_reacted: userReacted,
-        } as PostWithCommunity;
+          id: p.id,
+          section: p.section as PostSection,
+          body: p.body,
+          created_at: p.created_at,
+          handle: p.profiles?.handle || 'Anonymous',
+          reaction_counts: reactionCounts,
+          comment_count: commentsCountRes.count || 0,
+          user_reaction: myReactionRes.data?.emoji || null,
+        };
       })
     );
 
-    const nextCursor = enrichedPosts.length === limit
-      ? enrichedPosts[enrichedPosts.length - 1].created_at
-      : null;
+    if (sortBy === 'hot') {
+      enrichedPosts.sort((a, b) => {
+        const scoreA = (a.reaction_counts['🔥'] * 2 + a.reaction_counts['😂'] + a.reaction_counts['💀']) + a.comment_count * 2;
+        const scoreB = (b.reaction_counts['🔥'] * 2 + b.reaction_counts['😂'] + b.reaction_counts['💀']) + b.comment_count * 2;
+        return scoreB - scoreA;
+      });
+    }
+
+    const nextCursor =
+      posts && posts.length === limit ? posts[posts.length - 1].created_at : null;
 
     return { success: true, data: { posts: enrichedPosts, nextCursor } };
   } catch (error: unknown) {
@@ -150,75 +181,61 @@ export async function getFeedPosts(
   }
 }
 
-export async function getPostDetail(
-  postId: string
-): Promise<ServerActionResponse<PostWithCommunity>> {
+export async function getPostDetail(id: string): Promise<ServerActionResponse<PostView>> {
   try {
     const supabase = await createClient();
+    const { data: { user } } = await supabase.auth.getUser();
 
-    const { data: post, error } = await supabase
+    const { data: p, error } = await supabase
       .from('posts')
       .select(`
-        *,
-        community:communities!inner(id, name)
+        id,
+        section,
+        body,
+        created_at,
+        profiles!inner(handle)
       `)
-      .eq('id', postId)
+      .eq('id', id)
+      .eq('is_hidden', false)
       .single();
 
-    if (error) throw error;
+    if (error || !p) throw new Error('Post not found or has been removed');
 
-    // Get reaction counts
-    const { data: reactions } = await supabase
-      .from('reactions')
-      .select('type')
-      .eq('target_type', 'post')
-      .eq('target_id', post.id);
+    const [reactionsRes, commentsCountRes, myReactionRes] = await Promise.all([
+      supabase.from('reactions').select('emoji').eq('post_id', p.id),
+      supabase.from('comments').select('*', { count: 'exact', head: true }).eq('post_id', p.id).eq('is_hidden', false),
+      user
+        ? supabase.from('reactions').select('emoji').eq('post_id', p.id).eq('user_id', user.id).maybeSingle()
+        : Promise.resolve({ data: null }),
+    ]);
 
-    const reactionCounts: Record<string, number> = {};
-    (reactions || []).forEach(r => {
-      reactionCounts[r.type] = (reactionCounts[r.type] || 0) + 1;
-    });
+    const reactionCounts: Record<ReactionEmoji, number> = {
+      '🔥': 0,
+      '😂': 0,
+      '💀': 0,
+    };
 
-    // Get comment count
-    const { count } = await supabase
-      .from('comments')
-      .select('id', { count: 'exact', head: true })
-      .eq('post_id', post.id)
-      .eq('status', 'visible');
-
-    // Get current user's reactions
-    const { data: { user: authUser } } = await supabase.auth.getUser();
-    let userReacted: string[] = [];
-    if (authUser) {
-      const { data: myUser } = await supabase
-        .from('users')
-        .select('id')
-        .eq('auth_id', authUser.id)
-        .single();
-
-      if (myUser) {
-        const { data: myReactions } = await supabase
-          .from('reactions')
-          .select('type')
-          .eq('target_type', 'post')
-          .eq('target_id', post.id)
-          .eq('user_id', myUser.id);
-        userReacted = (myReactions || []).map(r => r.type);
+    (reactionsRes.data || []).forEach((r: { emoji: ReactionEmoji }) => {
+      if (reactionCounts[r.emoji] !== undefined) {
+        reactionCounts[r.emoji] += 1;
       }
-    }
+    });
 
     return {
       success: true,
       data: {
-        ...post,
-        community: Array.isArray(post.community) ? post.community[0] : post.community,
-        reaction_counts: reactionCounts as Record<string, number>,
-        comment_count: count || 0,
-        user_reacted: userReacted,
-      } as PostWithCommunity,
+        id: p.id,
+        section: p.section as PostSection,
+        body: p.body,
+        created_at: p.created_at,
+        handle: (p as any).profiles?.handle || 'Anonymous',
+        reaction_counts: reactionCounts,
+        comment_count: commentsCountRes.count || 0,
+        user_reaction: myReactionRes.data?.emoji || null,
+      },
     };
   } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : 'Failed to fetch post';
+    const message = error instanceof Error ? error.message : 'Failed to load post';
     return { success: false, error: message };
   }
 }

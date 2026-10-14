@@ -1,59 +1,28 @@
 // ============================================================
-// Database Types — mirrors schema.sql exactly
+// Database Types — Clean 8-table Streamlined Schema with Garba mode
 // ============================================================
 
-export type UserTier = 'chat' | 'verified';
+export type PostSection = 'crushes' | 'gossip' | 'campus' | 'garba';
+export type ReactionEmoji = '🔥' | '😂' | '💀';
+export type ReportTargetType = 'post' | 'comment' | 'message' | 'user';
+export type MatchQueueStatus = 'waiting' | 'matched' | 'cancelled';
+export type BlindDateMode = 'general' | 'garba';
 
-export type CommunityMode = 'open' | 'approved_posters';
-export type CommunityStatus = 'pending' | 'approved' | 'rejected';
-
-export type ContentStatus = 'visible' | 'auto_hidden' | 'removed';
-
-export type ReactionTargetType = 'post' | 'comment';
-export type ReactionEmoji = '👍' | '🔥' | '😂' | '💀';
-
-export type ReportTargetType = 'post' | 'comment';
-
-// ============================================================
-// Table Row Types
-// ============================================================
-
-export interface User {
-  id: string;
-  auth_id: string;
-  pseudonym: string;
-  tier: UserTier;
-  phone_hash: string | null;
-  device_fingerprint: string | null;
+export interface Profile {
+  id: string; // auth.uid
+  handle: string;
   is_banned: boolean;
-  is_admin: boolean;
-  created_at: string;
-}
-
-export interface Community {
-  id: string;
-  name: string;
-  description: string | null;
-  mode: CommunityMode;
-  status: CommunityStatus;
-  created_by: string;
-  created_at: string;
-}
-
-export interface CommunityPoster {
-  id: string;
-  community_id: string;
-  user_id: string;
+  blind_date_banned_until: string | null;
+  handle_changed_at: string | null;
   created_at: string;
 }
 
 export interface Post {
   id: string;
-  community_id: string;
-  user_id: string;
-  pseudonym_shown: string;
-  content: string;
-  status: ContentStatus;
+  author_id: string;
+  section: PostSection;
+  body: string;
+  is_hidden: boolean;
   report_count: number;
   created_at: string;
 }
@@ -61,89 +30,71 @@ export interface Post {
 export interface Comment {
   id: string;
   post_id: string;
-  user_id: string;
-  pseudonym_shown: string;
-  content: string;
-  status: ContentStatus;
+  author_id: string;
+  body: string;
+  is_hidden: boolean;
   report_count: number;
   created_at: string;
 }
 
 export interface Reaction {
-  id: string;
-  target_type: ReactionTargetType;
-  target_id: string;
+  post_id: string;
   user_id: string;
-  type: ReactionEmoji;
-  created_at: string;
+  emoji: ReactionEmoji;
 }
 
 export interface Report {
   id: string;
+  reporter_id: string;
   target_type: ReportTargetType;
   target_id: string;
-  reporter_id: string;
   reason: string;
-  resolved: boolean;
   created_at: string;
 }
 
-export interface Block {
-  id: string;
-  blocker_id: string;
-  blocked_id: string;
-  blocked_device_fingerprint: string | null;
-  blocked_phone_hash: string | null;
+export interface MatchQueue {
+  user_id: string;
+  status: MatchQueueStatus;
+  mode: BlindDateMode;
   created_at: string;
 }
 
-export interface Dm {
+export interface Match {
   id: string;
-  participant_a: string;
-  participant_b: string;
-  created_at: string;
+  user_a: string;
+  user_b: string;
+  mode: BlindDateMode;
+  started_at: string;
+  ends_at: string;
 }
 
-export interface DmMessage {
+export interface MatchMessage {
   id: string;
-  dm_id: string;
+  match_id: string;
   sender_id: string;
-  content: string;
+  body: string;
   created_at: string;
 }
 
-export interface PlaylistTrack {
-  title: string;
-  url: string;
-  platform: 'spotify' | 'youtube' | 'other';
-  approved: boolean;
-}
+// ============================================================
+// Public-safe Views / Enriched Types (author_id replaced by handle)
+// ============================================================
 
-export interface Playlist {
+export interface PostView {
   id: string;
-  community_id: string | null;
-  title: string;
-  tracks: PlaylistTrack[];
+  section: PostSection;
+  body: string;
   created_at: string;
-}
-
-// ============================================================
-// Enriched types (with joins) used by the UI
-// ============================================================
-
-export interface PostWithCommunity extends Post {
-  community: Pick<Community, 'id' | 'name'>;
+  handle: string;
   reaction_counts: Record<ReactionEmoji, number>;
   comment_count: number;
-  user_reacted: ReactionEmoji[];
+  user_reaction?: ReactionEmoji | null;
 }
 
-export interface CommentWithReactions extends Comment {
-  reaction_counts: Record<ReactionEmoji, number>;
-  user_reacted: ReactionEmoji[];
-}
-
-export interface DmThread extends Dm {
-  other_user: Pick<User, 'id' | 'pseudonym' | 'tier'>;
-  last_message: Pick<DmMessage, 'content' | 'created_at'> | null;
+export interface CommentView {
+  id: string;
+  post_id: string;
+  body: string;
+  created_at: string;
+  handle: string;
 }

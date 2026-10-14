@@ -1,44 +1,58 @@
 import { createClient } from '@/lib/supabase/server';
-import type { User } from '@/types';
+import { generateRandomHandle } from '@/lib/handles';
+import type { Profile } from '@/types';
 
-export async function getCurrentUser(): Promise<User | null> {
+export async function getCurrentProfile(): Promise<Profile | null> {
   const supabase = await createClient();
 
-  const { data: { user: authUser } } = await supabase.auth.getUser();
+  let { data: { user: authUser } } = await supabase.auth.getUser();
+
+  // If no auth cookie yet, attempt anonymous sign-in in server context
+  if (!authUser) {
+    try {
+      const { data: anonAuth } = await supabase.auth.signInAnonymously();
+      if (anonAuth?.user) {
+        authUser = anonAuth.user;
+      }
+    } catch {
+      // Ignore if sign-in cannot be completed server-side
+    }
+  }
+
   if (!authUser) return null;
 
-  const { data: user } = await supabase
-    .from('users')
+  let { data: profile } = await supabase
+    .from('profiles')
     .select('*')
-    .eq('auth_id', authUser.id)
-    .single();
+    .eq('id', authUser.id)
+    .maybeSingle();
 
-  return user;
+  // Auto-create profile row if auth user exists but profile row doesn't
+  if (!profile) {
+    const handle = generateRandomHandle();
+    const { data: created } = await supabase
+      .from('profiles')
+      .insert({ id: authUser.id, handle })
+      .select()
+      .maybeSingle();
+
+    if (created) {
+      profile = created;
+    }
+  }
+
+  return profile as Profile | null;
 }
 
-export async function requireAuth(): Promise<User> {
-  const user = await getCurrentUser();
-  if (!user) {
-    throw new Error('Authentication required');
+export async function requireProfile(): Promise<Profile> {
+  const profile = await getCurrentProfile();
+  if (!profile) {
+    throw new Error(
+      'Anonymous session required. In Supabase Dashboard: go to Authentication -> Providers -> toggle "Anonymous sign-ins" to ON, and verify your .env.local project credentials.'
+    );
   }
-  if (user.is_banned) {
+  if (profile.is_banned) {
     throw new Error('Your account has been banned');
   }
-  return user;
-}
-
-export async function requireVerified(): Promise<User> {
-  const user = await requireAuth();
-  if (user.tier !== 'verified') {
-    throw new Error('Verified account required to perform this action');
-  }
-  return user;
-}
-
-export async function requireAdmin(): Promise<User> {
-  const user = await requireAuth();
-  if (!user.is_admin) {
-    throw new Error('Admin access required');
-  }
-  return user;
+  return profile;
 }
