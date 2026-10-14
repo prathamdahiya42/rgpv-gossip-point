@@ -109,13 +109,7 @@ export async function getFeedPosts(
     // 2. Resilient fallback to direct table query if RPC is not yet in Supabase
     let query = supabase
       .from('posts')
-      .select(`
-        id,
-        section,
-        body,
-        created_at,
-        profiles!inner(handle)
-      `)
+      .select('id, section, body, author_id, created_at, is_hidden')
       .eq('section', section)
       .eq('is_hidden', false)
       .order('created_at', { ascending: false })
@@ -127,6 +121,17 @@ export async function getFeedPosts(
 
     const { data: posts, error } = await query;
     if (error) throw error;
+
+    // Fetch author handles safely
+    const authorIds = Array.from(new Set((posts || []).map((p: any) => p.author_id).filter(Boolean)));
+    const handleMap = new Map<string, string>();
+    if (authorIds.length > 0) {
+      const { data: profs } = await supabase
+        .from('profiles')
+        .select('id, handle')
+        .in('id', authorIds);
+      (profs || []).forEach(p => handleMap.set(p.id, p.handle));
+    }
 
     const enrichedPosts: PostView[] = await Promise.all(
       (posts || []).map(async (p: any) => {
@@ -155,7 +160,7 @@ export async function getFeedPosts(
           section: p.section as PostSection,
           body: p.body,
           created_at: p.created_at,
-          handle: p.profiles?.handle || 'Anonymous',
+          handle: handleMap.get(p.author_id) || 'Anonymous',
           reaction_counts: reactionCounts,
           comment_count: commentsCountRes.count || 0,
           user_reaction: myReactionRes.data?.emoji || null,
@@ -186,20 +191,26 @@ export async function getPostDetail(id: string): Promise<ServerActionResponse<Po
     const supabase = await createClient();
     const { data: { user } } = await supabase.auth.getUser();
 
+    // Query post directly
     const { data: p, error } = await supabase
       .from('posts')
-      .select(`
-        id,
-        section,
-        body,
-        created_at,
-        profiles!inner(handle)
-      `)
+      .select('id, section, body, author_id, created_at, is_hidden')
       .eq('id', id)
       .eq('is_hidden', false)
       .single();
 
     if (error || !p) throw new Error('Post not found or has been removed');
+
+    // Fetch author's handle safely
+    let authorHandle = 'Anonymous';
+    if (p.author_id) {
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('handle')
+        .eq('id', p.author_id)
+        .maybeSingle();
+      if (profile?.handle) authorHandle = profile.handle;
+    }
 
     const [reactionsRes, commentsCountRes, myReactionRes] = await Promise.all([
       supabase.from('reactions').select('emoji').eq('post_id', p.id),
@@ -228,7 +239,7 @@ export async function getPostDetail(id: string): Promise<ServerActionResponse<Po
         section: p.section as PostSection,
         body: p.body,
         created_at: p.created_at,
-        handle: (p as any).profiles?.handle || 'Anonymous',
+        handle: authorHandle,
         reaction_counts: reactionCounts,
         comment_count: commentsCountRes.count || 0,
         user_reaction: myReactionRes.data?.emoji || null,

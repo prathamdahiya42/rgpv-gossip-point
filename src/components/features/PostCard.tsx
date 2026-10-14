@@ -1,9 +1,12 @@
 'use client';
 
-import { useRouter } from 'next/navigation';
+import { useState } from 'react';
+import Link from 'next/link';
 import NoteCard from '@/components/ui/NoteCard';
 import Badge from '@/components/ui/Badge';
 import ReactionBar from '@/components/features/ReactionBar';
+import { createComment } from '@/actions/comments';
+import { useToast } from '@/context/ToastContext';
 import { HOT_THRESHOLD, POST_SECTIONS } from '@/types';
 import type { PostView } from '@/types';
 
@@ -12,8 +15,15 @@ interface PostCardProps {
   index?: number;
 }
 
+const QUICK_EMOJIS = ['🔥', '😂', '💀', '👀', '💯', '☕', '❤️'];
+
 export default function PostCard({ post, index = 0 }: PostCardProps) {
-  const router = useRouter();
+  const [isExpanded, setIsExpanded] = useState(false);
+  const [showQuickReply, setShowQuickReply] = useState(false);
+  const [commentText, setCommentText] = useState('');
+  const [commentCount, setCommentCount] = useState(post.comment_count);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const { showToast } = useToast();
 
   const totalReactions = Object.values(post.reaction_counts || {}).reduce(
     (sum, count) => sum + (count || 0),
@@ -21,33 +31,75 @@ export default function PostCard({ post, index = 0 }: PostCardProps) {
   );
   const isHot = totalReactions >= HOT_THRESHOLD;
   const timeAgo = getTimeAgo(post.created_at);
-
   const sectionMeta = POST_SECTIONS.find(s => s.id === post.section);
 
+  const isLong = post.body.length > 170 || post.body.split('\n').length > 3;
+
+  const handleQuickComment = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!commentText.trim() || isSubmitting) return;
+
+    setIsSubmitting(true);
+    const result = await createComment(post.id, commentText.trim());
+    if (result.success) {
+      setCommentCount(prev => prev + 1);
+      setCommentText('');
+      showToast('Comment dropped 💬', 'success');
+      setShowQuickReply(false);
+    } else {
+      showToast(result.error || 'Failed to comment', 'error');
+    }
+    setIsSubmitting(false);
+  };
+
+  const addEmoji = (emoji: string) => {
+    setCommentText(prev => `${prev}${emoji}`);
+  };
+
   return (
-    <NoteCard
-      index={index}
-      isHot={isHot}
-      onClick={() => router.push(`/post/${post.id}`)}
-    >
+    <NoteCard index={index} isHot={isHot}>
       {/* Header */}
       <div className="flex items-center justify-between mb-2">
-        <div className="flex items-center gap-2">
-          <span className="font-mono text-xs text-ink-soft">{post.handle}</span>
+        <Link
+          href={`/post/${post.id}`}
+          className="flex items-center gap-2 group/header"
+        >
+          <span className="font-mono text-xs text-ink-soft group-hover/header:text-green transition-colors font-medium">
+            {post.handle}
+          </span>
           <Badge variant="community">
             {sectionMeta?.label || post.section}
           </Badge>
-        </div>
-        {isHot && <Badge variant="hot">HOT</Badge>}
+        </Link>
+        {isHot && <Badge variant="hot">HOT 🔥</Badge>}
       </div>
 
-      {/* Post Body */}
-      <p className="font-body text-sm text-ink leading-relaxed line-clamp-5 mb-3 whitespace-pre-wrap">
-        {post.body}
-      </p>
+      {/* Post Body (with seamless inline expansion) */}
+      <div className="mb-2.5">
+        <p
+          className={`font-body text-sm text-ink leading-relaxed whitespace-pre-wrap transition-all ${
+            !isExpanded && isLong ? 'line-clamp-4' : ''
+          }`}
+        >
+          {post.body}
+        </p>
 
-      {/* Footer */}
-      <div className="flex items-center justify-between pt-1">
+        {isLong && (
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              setIsExpanded(!isExpanded);
+            }}
+            className="mt-1.5 font-mono text-xs font-semibold text-green hover:underline inline-flex items-center gap-1"
+          >
+            {isExpanded ? '▴ Collapse post' : '▾ Read full confession...'}
+          </button>
+        )}
+      </div>
+
+      {/* Footer Actions */}
+      <div className="flex items-center justify-between pt-1 border-t border-ink/5">
         <ReactionBar
           targetId={post.id}
           counts={post.reaction_counts}
@@ -55,23 +107,100 @@ export default function PostCard({ post, index = 0 }: PostCardProps) {
           compact
         />
 
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2.5">
+          {/* Quick Comment Toggle Button */}
           <button
+            type="button"
             onClick={(e) => {
               e.stopPropagation();
-              router.push(`/post/${post.id}`);
+              setShowQuickReply(!showQuickReply);
             }}
-            className="flex items-center gap-1 text-ink-soft hover:text-green transition-colors"
+            className={`
+              flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-mono transition-all
+              ${showQuickReply
+                ? 'bg-green text-white font-semibold'
+                : 'bg-ink/5 text-ink-soft hover:text-green hover:bg-green/10'
+              }
+            `}
           >
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
-            </svg>
-            <span className="font-mono text-[10px]">{post.comment_count}</span>
+            <span>💬</span>
+            <span className="text-[11px] font-semibold">{commentCount}</span>
+            <span className="hidden sm:inline text-[10px]">Comment</span>
           </button>
 
-          <span className="font-mono text-[10px] text-ink-soft/70">{timeAgo}</span>
+          <Link
+            href={`/post/${post.id}`}
+            className="font-mono text-[10px] text-ink-soft/70 hover:text-ink transition-colors"
+          >
+            {timeAgo}
+          </Link>
         </div>
       </div>
+
+      {/* Inline Quick Comment Drawer */}
+      {showQuickReply && (
+        <div
+          onClick={(e) => e.stopPropagation()}
+          className="mt-3 pt-3 border-t border-ink/10 animate-fade-in"
+        >
+          {/* Quick Emoji Bar */}
+          <div className="flex items-center gap-1 mb-2 overflow-x-auto pb-1 scrollbar-none">
+            <span className="font-mono text-[10px] text-ink-soft mr-1">Quick:</span>
+            {QUICK_EMOJIS.map((emoji) => (
+              <button
+                key={emoji}
+                type="button"
+                onClick={() => addEmoji(emoji)}
+                className="w-7 h-7 flex items-center justify-center rounded-lg bg-ink/5 hover:bg-ink/10 text-xs transition-transform active:scale-90"
+              >
+                {emoji}
+              </button>
+            ))}
+          </div>
+
+          <form onSubmit={handleQuickComment} className="flex gap-2">
+            <input
+              type="text"
+              value={commentText}
+              onChange={(e) => setCommentText(e.target.value)}
+              placeholder="Drop an anonymous reply..."
+              maxLength={300}
+              className="
+                flex-1 px-3 py-2 rounded-xl
+                bg-paper border border-ink/10
+                font-body text-xs text-ink
+                placeholder:text-ink-soft/40
+                focus:outline-none focus:ring-1 focus:ring-green
+              "
+              autoFocus
+            />
+            <button
+              type="submit"
+              disabled={!commentText.trim() || isSubmitting}
+              className="
+                px-3.5 py-2 rounded-xl
+                bg-green text-white font-body text-xs font-semibold
+                hover:bg-green/90 transition-colors
+                disabled:opacity-30 disabled:cursor-not-allowed
+              "
+            >
+              {isSubmitting ? '...' : 'Send'}
+            </button>
+          </form>
+
+          <div className="flex items-center justify-between mt-2 pt-1">
+            <span className="font-mono text-[9px] text-ink-soft">
+              {commentText.length}/300
+            </span>
+            <Link
+              href={`/post/${post.id}`}
+              className="font-mono text-[10px] text-green hover:underline flex items-center gap-1"
+            >
+              Open full discussion & replies →
+            </Link>
+          </div>
+        </div>
+      )}
     </NoteCard>
   );
 }

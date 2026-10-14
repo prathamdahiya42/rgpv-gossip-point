@@ -108,11 +108,26 @@ export default function CommentThread({ comments, onReply }: CommentThreadProps)
                   <span>Replying to <strong className="text-ink">@{comment.handle}</strong></span>
                   <button
                     onClick={() => setReplyingToId(null)}
-                    className="hover:text-ink"
+                    className="hover:text-ink text-xs"
                   >
                     ✕
                   </button>
                 </div>
+
+                {/* Quick Emoji Bar for Replies */}
+                <div className="flex items-center gap-1 overflow-x-auto pb-1 scrollbar-none">
+                  {['🔥', '😂', '💀', '👀', '💯', '❤️'].map((em) => (
+                    <button
+                      key={em}
+                      type="button"
+                      onClick={() => setReplyText(prev => `${prev}${em}`)}
+                      className="w-6 h-6 flex items-center justify-center rounded bg-card text-[11px] hover:bg-card/80 transition-transform active:scale-90"
+                    >
+                      {em}
+                    </button>
+                  ))}
+                </div>
+
                 <div className="flex gap-2">
                   <input
                     type="text"

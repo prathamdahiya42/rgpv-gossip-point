@@ -71,21 +71,26 @@ export async function getComments(postId: string): Promise<ServerActionResponse<
   try {
     const supabase = await createClient();
 
-    // Query non-hidden comments joining profiles to get handle without exposing author_id
+    // Query non-hidden comments
     const { data, error } = await supabase
       .from('comments')
-      .select(`
-        id,
-        post_id,
-        body,
-        created_at,
-        profiles!inner(handle)
-      `)
+      .select('id, post_id, author_id, parent_id, body, created_at, is_hidden')
       .eq('post_id', postId)
       .eq('is_hidden', false)
       .order('created_at', { ascending: true });
 
     if (error) throw error;
+
+    // Fetch author handles safely
+    const authorIds = Array.from(new Set((data || []).map((r: any) => r.author_id).filter(Boolean)));
+    const handleMap = new Map<string, string>();
+    if (authorIds.length > 0) {
+      const { data: profs } = await supabase
+        .from('profiles')
+        .select('id, handle')
+        .in('id', authorIds);
+      (profs || []).forEach(p => handleMap.set(p.id, p.handle));
+    }
 
     // Build threaded comments (parent comments with 1-level nested replies)
     const rawComments: CommentView[] = (data || []).map((row: any) => ({
@@ -94,7 +99,7 @@ export async function getComments(postId: string): Promise<ServerActionResponse<
       parent_id: row.parent_id || null,
       body: row.body,
       created_at: row.created_at,
-      handle: row.profiles?.handle || 'Anonymous',
+      handle: handleMap.get(row.author_id) || 'Anonymous',
       replies: [],
     }));
 

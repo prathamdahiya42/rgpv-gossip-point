@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useTransition } from 'react';
 import { useParams, useRouter } from 'next/navigation';
+import Link from 'next/link';
 import { getPostDetail } from '@/actions/posts';
 import { getComments, createComment } from '@/actions/comments';
 import NoteCard from '@/components/ui/NoteCard';
@@ -12,6 +13,8 @@ import ReportModal from '@/components/features/ReportModal';
 import { useToast } from '@/context/ToastContext';
 import { HOT_THRESHOLD, POST_SECTIONS } from '@/types';
 import type { PostView, CommentView } from '@/types';
+
+const COMMENT_EMOJIS = ['🔥', '😂', '💀', '👀', '💯', '☕', '🤫', '❤️', '✨', '😭', '🚩'];
 
 export default function PostDetailPage() {
   const params = useParams();
@@ -33,18 +36,23 @@ export default function PostDetailPage() {
         getComments(postId),
       ]);
 
-      if (postResult.success && postResult.data) setPost(postResult.data);
-      if (commentsResult.success && commentsResult.data) setComments(commentsResult.data);
+      if (postResult.success && postResult.data) {
+        setPost(postResult.data);
+      }
+      if (commentsResult.success && commentsResult.data) {
+        setComments(commentsResult.data);
+      }
       setLoading(false);
     }
     load();
   }, [postId]);
 
-  const handleComment = () => {
-    if (!newComment.trim()) return;
+  const handleComment = (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    if (!newComment.trim() || isPending) return;
 
     startTransition(async () => {
-      const result = await createComment(postId, newComment);
+      const result = await createComment(postId, newComment.trim());
       if (result.success) {
         setNewComment('');
         const commentsResult = await getComments(postId);
@@ -73,10 +81,15 @@ export default function PostDetailPage() {
     }
   };
 
+  const addEmojiToComment = (emoji: string) => {
+    setNewComment(prev => `${prev}${emoji}`);
+  };
+
   if (loading) {
     return (
       <div className="py-20 text-center">
         <div className="inline-block animate-spin text-3xl">📌</div>
+        <p className="font-body text-xs text-ink-soft mt-3">Loading discussion...</p>
       </div>
     );
   }
@@ -84,13 +97,15 @@ export default function PostDetailPage() {
   if (!post) {
     return (
       <div className="px-4 py-16 text-center">
-        <p className="font-display text-base text-ink mb-4">Post not found or has been removed.</p>
-        <button
-          onClick={() => router.push('/')}
-          className="px-4 py-2 bg-green text-white rounded-xl text-xs font-mono"
+        <div className="text-4xl mb-3">📭</div>
+        <p className="font-display text-base font-semibold text-ink mb-2">Post not found</p>
+        <p className="font-body text-xs text-ink-soft mb-5">This confession may have expired or been removed.</p>
+        <Link
+          href="/"
+          className="inline-flex items-center gap-1.5 px-4 py-2 bg-green text-white rounded-xl text-xs font-mono font-medium shadow-sm hover:bg-green/90 transition-colors"
         >
-          ← Back to feed
-        </button>
+          ← Back to campus feed
+        </Link>
       </div>
     );
   }
@@ -101,43 +116,50 @@ export default function PostDetailPage() {
   );
   const isHot = totalReactions >= HOT_THRESHOLD;
   const sectionMeta = POST_SECTIONS.find(s => s.id === post.section);
+  const totalCommentsCount = comments.reduce((acc, c) => acc + 1 + (c.replies?.length || 0), 0);
 
   return (
-    <div className="px-4 py-4">
+    <div className="px-4 py-4 max-w-xl mx-auto">
       {/* Back button */}
-      <button
-        onClick={() => router.back()}
-        className="mb-3 flex items-center gap-1 font-mono text-xs text-ink-soft hover:text-green transition-colors"
-      >
-        ← Back
-      </button>
+      <div className="flex items-center justify-between mb-3">
+        <button
+          onClick={() => router.back()}
+          className="flex items-center gap-1 font-mono text-xs text-ink-soft hover:text-green transition-colors"
+        >
+          ← Back to feed
+        </button>
+        <span className="font-mono text-[11px] text-ink-soft">
+          UIT RGPV Bhopal
+        </span>
+      </div>
 
-      {/* Post */}
+      {/* Main Post Card */}
       <NoteCard index={0} isHot={isHot}>
         <div className="flex items-center justify-between mb-3">
           <div className="flex items-center gap-2">
-            <span className="font-mono text-xs text-ink-soft">{post.handle}</span>
+            <span className="font-mono text-xs font-semibold text-ink">{post.handle}</span>
             <Badge variant="community">{sectionMeta?.label || post.section}</Badge>
           </div>
           <div className="flex items-center gap-2">
-            {isHot && <Badge variant="hot">HOT</Badge>}
+            {isHot && <Badge variant="hot">HOT 🔥</Badge>}
             <button
               onClick={() => setShowReport(true)}
-              className="p-1.5 rounded-full hover:bg-coral-soft transition-colors"
+              className="p-1.5 rounded-full hover:bg-coral-soft text-ink-soft/40 hover:text-coral transition-colors"
               title="Report post"
             >
-              <svg className="w-4 h-4 text-ink-soft hover:text-coral" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3 21v-4m0 0V5a2 2 0 012-2h6.5l1 1H21l-3 6 3 6h-8.5l-1-1H5a2 2 0 00-2 2z" />
               </svg>
             </button>
           </div>
         </div>
 
-        <p className="font-body text-base text-ink leading-relaxed mb-4 whitespace-pre-wrap">
+        {/* Full Post Body - No Truncation */}
+        <p className="font-body text-base text-ink leading-relaxed mb-4 whitespace-pre-wrap select-text">
           {post.body}
         </p>
 
-        <div className="flex items-center justify-between pt-1">
+        <div className="flex items-center justify-between pt-2 border-t border-ink/5">
           <ReactionBar
             targetId={post.id}
             counts={post.reaction_counts}
@@ -154,44 +176,90 @@ export default function PostDetailPage() {
         </div>
       </NoteCard>
 
-      {/* Comments section */}
-      <div className="mt-6 bg-card rounded-2xl border border-ink/5 p-4">
-        <h2 className="font-display text-sm font-bold text-ink mb-2">
-          Comments ({comments.reduce((acc, c) => acc + 1 + (c.replies?.length || 0), 0)})
-        </h2>
+      {/* Comments & Discussion Section */}
+      <div className="mt-5 bg-card rounded-2xl border border-ink/10 p-4 shadow-sm">
+        <div className="flex items-center justify-between mb-3 pb-2 border-b border-ink/5">
+          <h2 className="font-display text-sm font-bold text-ink flex items-center gap-2">
+            <span>💬 Discussion</span>
+            <span className="px-2 py-0.5 rounded-full bg-ink/5 font-mono text-[11px] font-semibold text-ink-soft">
+              {totalCommentsCount}
+            </span>
+          </h2>
+          <span className="font-mono text-[10px] text-ink-soft">Anonymous replies</span>
+        </div>
 
+        {/* Comment Thread */}
         <CommentThread comments={comments} onReply={handleReply} />
 
-        {/* Comment input */}
-        <div className="mt-4 flex gap-2">
-          <input
-            type="text"
-            value={newComment}
-            onChange={e => setNewComment(e.target.value)}
-            onKeyDown={e => e.key === 'Enter' && handleComment()}
-            placeholder="Drop an anonymous reply (no contact info)..."
-            maxLength={300}
-            className="
-              flex-1 px-4 py-2.5 rounded-xl
-              bg-ink/5 border border-ink/10
-              font-body text-xs text-ink
-              focus:outline-none focus:ring-2 focus:ring-green/30
-              placeholder:text-ink-soft/40
-              transition-all
-            "
-          />
-          <button
-            onClick={handleComment}
-            disabled={!newComment.trim() || isPending}
-            className="
-              px-4 py-2.5 rounded-xl
-              bg-green text-white font-body text-xs font-semibold
-              hover:bg-green/90 transition-colors
-              disabled:opacity-30 disabled:cursor-not-allowed
-            "
-          >
-            {isPending ? '...' : 'Reply'}
-          </button>
+        {/* New Comment Form & Emoji Bar */}
+        <div id="comment-box" className="mt-5 pt-3 border-t border-ink/10">
+          <label className="block font-mono text-[11px] font-medium text-ink-soft mb-1.5">
+            Drop an anonymous reply (no real names or contact info):
+          </label>
+
+          {/* Quick Emoji Toolbar */}
+          <div className="flex items-center gap-1.5 mb-2 overflow-x-auto pb-1 scrollbar-none">
+            <span className="font-mono text-[10px] text-ink-soft mr-0.5">Add:</span>
+            {COMMENT_EMOJIS.map((emoji) => (
+              <button
+                key={emoji}
+                type="button"
+                onClick={() => addEmojiToComment(emoji)}
+                className="w-7 h-7 flex items-center justify-center rounded-lg bg-ink/5 hover:bg-ink/10 text-xs transition-transform active:scale-90"
+              >
+                {emoji}
+              </button>
+            ))}
+          </div>
+
+          <form onSubmit={handleComment} className="space-y-2">
+            <div className="relative">
+              <textarea
+                value={newComment}
+                onChange={e => setNewComment(e.target.value)}
+                onKeyDown={e => {
+                  if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault();
+                    handleComment();
+                  }
+                }}
+                placeholder="What do you think about this? Spill your thoughts..."
+                maxLength={300}
+                rows={2}
+                className="
+                  w-full px-3.5 py-2.5 rounded-xl
+                  bg-paper border border-ink/15
+                  font-body text-xs text-ink
+                  placeholder:text-ink-soft/40
+                  focus:outline-none focus:ring-2 focus:ring-green/30 focus:border-green
+                  transition-all resize-none
+                "
+              />
+              <span className="absolute bottom-2 right-3 font-mono text-[10px] text-ink-soft/60 pointer-events-none">
+                {newComment.length}/300
+              </span>
+            </div>
+
+            <div className="flex items-center justify-between">
+              <span className="font-mono text-[10px] text-ink-soft/60">
+                Press Enter to post
+              </span>
+              <button
+                type="submit"
+                disabled={!newComment.trim() || isPending}
+                className="
+                  px-4 py-2 rounded-xl
+                  bg-green text-white font-body text-xs font-semibold
+                  hover:bg-green/90 transition-colors shadow-sm
+                  disabled:opacity-30 disabled:cursor-not-allowed
+                  flex items-center gap-1.5
+                "
+              >
+                <span>{isPending ? 'Posting...' : 'Post Reply'}</span>
+                <span>💬</span>
+              </button>
+            </div>
+          </form>
         </div>
       </div>
 
