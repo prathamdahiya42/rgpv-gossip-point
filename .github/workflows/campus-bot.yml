@@ -1,0 +1,15 @@
+name: Campus Bot Seeder Cron
+
+on:
+  schedule:
+    # Runs every 30 minutes to seed realistic student banter and comments
+    - cron: '*/30 * * * *'
+  workflow_dispatch:
+
+jobs:
+  seed:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger Campus Bot Seeder
+        run: |
+          curl -s "https://rgpv-gossip-point.vercel.app/api/bot/seed?action=schedule" || true
