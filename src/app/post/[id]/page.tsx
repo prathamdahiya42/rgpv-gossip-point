@@ -239,8 +239,9 @@ export default function PostDetailPage() {
 
         {/* New Comment Form & Emoji Bar */}
         <div id="comment-box" className="mt-5 pt-3 border-t border-ink/10">
-          <label className="block font-mono text-[11px] font-medium text-ink-soft mb-1.5">
-            Drop an anonymous reply (no real names or contact info):
+          <label className="flex items-center justify-between font-mono text-[11px] font-medium text-ink-soft mb-1.5">
+            <span>Drop an anonymous reply:</span>
+            <span className="text-[10px] text-coral font-semibold">🛑 No real names / roll numbers</span>
           </label>
 
           {/* Quick Emoji Toolbar */}

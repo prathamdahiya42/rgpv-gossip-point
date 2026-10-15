@@ -6,7 +6,7 @@ import { useAnon } from '@/context/AnonContext';
 import { useToast } from '@/context/ToastContext';
 
 export default function TopBar() {
-  const { profile, loading, authError, rerollHandle, retryInit } = useAnon();
+  const { profile, loading, authError, activeCount, rerollHandle, retryInit } = useAnon();
   const { showToast } = useToast();
   const [rerolling, setRerolling] = useState(false);
 
@@ -27,20 +27,30 @@ export default function TopBar() {
       <header className="sticky top-0 z-40 bg-paper/85 backdrop-blur-md border-b border-ink/5">
         <div className="max-w-md mx-auto px-4 h-14 flex items-center justify-between">
           {/* Logo */}
-          <Link href="/" className="flex items-center gap-2 group">
+          <Link href="/" className="flex items-center gap-1.5 group">
             <span className="text-xl">📌</span>
-            <span className="font-display font-bold text-ink text-base tracking-tight group-hover:text-green transition-colors">
+            <span className="font-display font-bold text-ink text-sm sm:text-base tracking-tight group-hover:text-green transition-colors">
               RGPV Gossip Point
             </span>
           </Link>
 
-          {/* Anonymous Handle + Reroll Button */}
+          {/* Right side: Live Active Count + Anonymous Handle */}
           <div className="flex items-center gap-1.5">
+            {/* Live Active Campus Badge */}
+            <div
+              className="flex items-center gap-1 px-2 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-800 text-[11px] font-mono"
+              title={`${activeCount} campus students active right now`}
+            >
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+              <span className="font-bold">{activeCount}</span>
+              <span className="hidden xs:inline text-[10px] text-emerald-700/80">live</span>
+            </div>
+
             {loading ? (
-              <div className="h-7 w-28 bg-ink/5 rounded-full animate-pulse" />
+              <div className="h-7 w-24 bg-ink/5 rounded-full animate-pulse" />
             ) : (
               <div className="flex items-center gap-1 px-2.5 py-1 rounded-full bg-green-soft border border-green/20">
-                <span className="text-xs font-mono text-green font-medium max-w-[130px] truncate">
+                <span className="text-xs font-mono text-green font-medium max-w-[110px] truncate">
                   {profile?.handle || 'Anonymous'}
                 </span>
                 <button

@@ -9,6 +9,7 @@ import { POST_SECTIONS } from '@/types';
 import type { FeedSection, PostSection, PostView } from '@/types';
 
 import { seedSingleCampusStory, seedCampusStoriesIfEmpty } from '@/actions/seed';
+import CampusNoticeBanner from '@/components/features/CampusNoticeBanner';
 
 function FeedContent() {
   const router = useRouter();
@@ -104,6 +105,9 @@ function FeedContent() {
 
   return (
     <div className="px-4 py-4">
+      {/* Official Campus Notice & 1:00 PM Garba Countdown */}
+      <CampusNoticeBanner />
+
       {/* Skippable Campus Splash Caption */}
       {showSplash && (
         <div className="mb-3.5 p-3 rounded-2xl bg-gradient-to-r from-green-soft to-paper border border-green/20 flex items-center justify-between gap-2 shadow-sm animate-fade-in">

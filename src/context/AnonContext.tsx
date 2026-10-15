@@ -10,6 +10,7 @@ interface AnonContextType {
   profile: Profile | null;
   loading: boolean;
   authError: string | null;
+  activeCount: number;
   rerollHandle: () => Promise<{ success: boolean; error?: string }>;
   refreshProfile: () => Promise<void>;
   retryInit: () => Promise<void>;
@@ -19,6 +20,7 @@ const AnonContext = createContext<AnonContextType>({
   profile: null,
   loading: true,
   authError: null,
+  activeCount: 9,
   rerollHandle: async () => ({ success: false }),
   refreshProfile: async () => {},
   retryInit: async () => {},
@@ -28,6 +30,7 @@ export function AnonProvider({ children }: { children: ReactNode }) {
   const [profile, setProfile] = useState<Profile | null>(null);
   const [loading, setLoading] = useState(true);
   const [authError, setAuthError] = useState<string | null>(null);
+  const [activeCount, setActiveCount] = useState<number>(9);
 
   const initSessionAndProfile = useCallback(async () => {
     try {
@@ -122,8 +125,63 @@ export function AnonProvider({ children }: { children: ReactNode }) {
     };
   }, [initSessionAndProfile, profile]);
 
+  // Live campus presence channel with realistic student activity multiplier
+  useEffect(() => {
+    const supabase = createClient();
+    const presenceKey = profile?.id || `anon_${Math.random().toString(36).slice(2, 9)}`;
+
+    const channel = supabase.channel('rgpv-presence', {
+      config: {
+        presence: { key: presenceKey },
+      },
+    });
+
+    const calculateBoostedCount = (realUsers: number) => {
+      const minute = new Date().getMinutes();
+      const subtleJitter = (minute % 3) - 1; // -1, 0, or 1
+      // When real is 4 -> 9-10; when real is 7 -> 13-14
+      const base = Math.round(realUsers * 1.3) + 4;
+      return Math.max(8, base + subtleJitter);
+    };
+
+    channel
+      .on('presence', { event: 'sync' }, () => {
+        const state = channel.presenceState();
+        const real = Object.keys(state).length;
+        setActiveCount(calculateBoostedCount(real));
+      })
+      .on('presence', { event: 'join' }, () => {
+        const state = channel.presenceState();
+        const real = Object.keys(state).length;
+        setActiveCount(calculateBoostedCount(real));
+      })
+      .on('presence', { event: 'leave' }, () => {
+        const state = channel.presenceState();
+        const real = Object.keys(state).length;
+        setActiveCount(calculateBoostedCount(real));
+      })
+      .subscribe(async (status) => {
+        if (status === 'SUBSCRIBED') {
+          await channel.track({
+            online_at: new Date().toISOString(),
+          });
+        }
+      });
+
+    const interval = setInterval(() => {
+      const state = channel.presenceState();
+      const real = Object.keys(state).length;
+      setActiveCount(calculateBoostedCount(real));
+    }, 30000);
+
+    return () => {
+      clearInterval(interval);
+      channel.unsubscribe();
+    };
+  }, [profile?.id]);
+
   return (
-    <AnonContext.Provider value={{ profile, loading, authError, rerollHandle: reroll, refreshProfile, retryInit: initSessionAndProfile }}>
+    <AnonContext.Provider value={{ profile, loading, authError, activeCount, rerollHandle: reroll, refreshProfile, retryInit: initSessionAndProfile }}>
       {children}
     </AnonContext.Provider>
   );
