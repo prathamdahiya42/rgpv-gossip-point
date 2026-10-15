@@ -60,53 +60,55 @@ export async function getFeedPosts(
     const supabase = await createClient();
     const { data: { user } } = await supabase.auth.getUser();
 
-    // 1. Try SQL RPC with database-computed Hot/New ranking
-    const { data: rpcData, error: rpcError } = await supabase.rpc('get_feed_posts', {
-      p_section: section,
-      p_sort: sortBy,
-      p_cursor: cursor || null,
-      p_limit: limit,
-    });
+    // 1. Try SQL RPC for specific sections with database-computed Hot/New ranking
+    if (section !== 'all') {
+      const { data: rpcData, error: rpcError } = await supabase.rpc('get_feed_posts', {
+        p_section: section,
+        p_sort: sortBy,
+        p_cursor: cursor || null,
+        p_limit: limit,
+      });
 
-    if (!rpcError && Array.isArray(rpcData)) {
-      // Enrich with user's own reaction if signed in
-      const postsWithUserReaction: PostView[] = await Promise.all(
-        rpcData.map(async (row: any) => {
-          let userReaction: ReactionEmoji | null = null;
-          if (user) {
-            const { data: myReaction } = await supabase
-              .from('reactions')
-              .select('emoji')
-              .eq('post_id', row.id)
-              .eq('user_id', user.id)
-              .maybeSingle();
-            userReaction = myReaction?.emoji || null;
-          }
+      if (!rpcError && Array.isArray(rpcData) && rpcData.length > 0) {
+        // Enrich with user's own reaction if signed in
+        const postsWithUserReaction: PostView[] = await Promise.all(
+          rpcData.map(async (row: any) => {
+            let userReaction: ReactionEmoji | null = null;
+            if (user) {
+              const { data: myReaction } = await supabase
+                .from('reactions')
+                .select('emoji')
+                .eq('post_id', row.id)
+                .eq('user_id', user.id)
+                .maybeSingle();
+              userReaction = myReaction?.emoji || null;
+            }
 
-          return {
-            id: row.id,
-            section: row.section as PostSection,
-            body: row.body,
-            created_at: row.created_at,
-            handle: row.handle,
-            reaction_counts: {
-              '🔥': Number(row.fire_count || 0),
-              '😂': Number(row.laugh_count || 0),
-              '💀': Number(row.skull_count || 0),
-            },
-            comment_count: Number(row.comment_count || 0),
-            user_reaction: userReaction,
-          };
-        })
-      );
+            return {
+              id: row.id,
+              section: row.section as PostSection,
+              body: row.body,
+              created_at: row.created_at,
+              handle: row.handle,
+              reaction_counts: {
+                '🔥': Number(row.fire_count || 0),
+                '😂': Number(row.laugh_count || 0),
+                '💀': Number(row.skull_count || 0),
+              },
+              comment_count: Number(row.comment_count || 0),
+              user_reaction: userReaction,
+            };
+          })
+        );
 
-      const nextCursor =
-        rpcData.length === limit ? rpcData[rpcData.length - 1].created_at : null;
+        const nextCursor =
+          rpcData.length === limit ? rpcData[rpcData.length - 1].created_at : null;
 
-      return { success: true, data: { posts: postsWithUserReaction, nextCursor } };
+        return { success: true, data: { posts: postsWithUserReaction, nextCursor } };
+      }
     }
 
-    // 2. Resilient fallback to direct table query if RPC is not yet in Supabase
+    // 2. Direct table query (returns all posts across all sections when section === 'all')
     let query = supabase
       .from('posts')
       .select('id, section, body, author_id, created_at, is_hidden')

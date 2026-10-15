@@ -6,7 +6,7 @@ import { useAnon } from '@/context/AnonContext';
 
 export default function CampusNoticeBanner() {
   const { activeCount } = useAnon();
-  const [collapsed, setCollapsed] = useState(false);
+  const [collapsed, setCollapsed] = useState(true);
   const [mounted, setMounted] = useState(false);
   const [timeLeft, setTimeLeft] = useState<{
     hours: number;
@@ -25,8 +25,8 @@ export default function CampusNoticeBanner() {
   useEffect(() => {
     setMounted(true);
     const saved = sessionStorage.getItem('rgpv_notice_collapsed');
-    if (saved === '1') {
-      setCollapsed(true);
+    if (saved === '0') {
+      setCollapsed(false);
     }
   }, []);
 
@@ -66,51 +66,50 @@ export default function CampusNoticeBanner() {
           hours: Math.floor(diff / (1000 * 60 * 60)),
           minutes: Math.floor((diff / (1000 * 60)) % 60),
           seconds: Math.floor((diff / 1000) % 60),
-          isLive: false,
-          isPast: true,
-        });
-        return;
-      }
-
-      // Before 1:00 PM
-      const diff = Math.max(0, target.getTime() - now.getTime());
-      setTimeLeft({
-        hours: Math.floor(diff / (1000 * 60 * 60)),
-        minutes: Math.floor((diff / (1000 * 60)) % 60),
-        seconds: Math.floor((diff / 1000) % 60),
         isLive: false,
-        isPast: false,
+        isPast: true,
       });
-    };
+      return;
+    }
 
-    calculateTime();
-    const timer = setInterval(calculateTime, 1000);
-    return () => clearInterval(timer);
-  }, []);
+    // Before 1:00 PM
+    const diff = Math.max(0, target.getTime() - now.getTime());
+    setTimeLeft({
+      hours: Math.floor(diff / (1000 * 60 * 60)),
+      minutes: Math.floor((diff / (1000 * 60)) % 60),
+      seconds: Math.floor((diff / 1000) % 60),
+      isLive: false,
+      isPast: false,
+    });
+  };
+
+  calculateTime();
+  const timer = setInterval(calculateTime, 1000);
+  return () => clearInterval(timer);
+}, []);
 
   const formatPad = (n: number) => n.toString().padStart(2, '0');
 
-  if (!mounted) return null;
-
-  // Minimized state view
+  // Minimized state view (Rendered by default for zero layout shift)
   if (collapsed) {
     return (
       <aside aria-label="Campus Notice Summary" className="mb-3">
         <button
+          type="button"
           onClick={toggleCollapsed}
           className="w-full text-left p-2.5 rounded-2xl bg-amber-500/10 border border-amber-500/25 flex items-center justify-between gap-2 text-xs hover:bg-amber-500/15 transition-all shadow-sm group"
         >
-          <div className="flex items-center gap-2 truncate">
-            <span className="text-base flex-shrink-0">📌</span>
+          <div className="flex items-center gap-2 truncate min-w-0">
+            <span className="text-base shrink-0">📌</span>
             <span className="font-semibold text-amber-950 font-display truncate">
-              Campus Notice: 1:00 PM Rush ({timeLeft.isLive ? 'LIVE 🔥' : `${formatPad(timeLeft.hours)}h ${formatPad(timeLeft.minutes)}m`})
+              Notice: Strict No-Names Rule & 1:00 PM Garba Rush
             </span>
-            <span className="hidden xs:inline-block px-1.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-800 text-[10px] font-mono font-semibold flex-shrink-0">
-              🟢 {activeCount} live
+            <span className="hidden xs:inline-block px-1.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-800 text-[10px] font-mono font-semibold shrink-0">
+              {mounted && timeLeft.isLive ? '🔥 LIVE' : 'Campus'}
             </span>
           </div>
-          <span className="font-mono text-[11px] text-amber-800/80 group-hover:text-amber-950 font-semibold flex-shrink-0 flex items-center gap-1">
-            Read notice ▼
+          <span className="font-mono text-[11px] text-amber-900 group-hover:text-amber-950 font-semibold shrink-0 flex items-center gap-1">
+            Read rules ▼
           </span>
         </button>
       </aside>

@@ -26,61 +26,58 @@ export default function TopBar() {
 
   return (
     <>
-      <header className="sticky top-0 z-40 bg-paper/85 backdrop-blur-md border-b border-ink/5">
-        <div className="max-w-md mx-auto px-4 h-14 flex items-center justify-between">
+      <header className="sticky top-0 z-40 bg-paper/90 backdrop-blur-md border-b border-ink/5">
+        <div className="max-w-md mx-auto px-3.5 h-14 flex items-center justify-between gap-1.5 overflow-hidden">
           {/* Logo */}
-          <Link href="/" className="flex items-center gap-1.5 group">
-            <span className="text-xl">📌</span>
-            <span className="font-display font-bold text-ink text-sm sm:text-base tracking-tight group-hover:text-green transition-colors">
+          <Link href="/" className="flex items-center gap-1.5 group shrink min-w-0">
+            <span className="text-xl shrink-0">📌</span>
+            <span className="font-display font-bold text-ink text-sm sm:text-base tracking-tight truncate group-hover:text-green transition-colors">
               RGPV Gossip Point
             </span>
           </Link>
 
           {/* Right side: Mod Button + Live Active Count + Anonymous Handle */}
-          <div className="flex items-center gap-1.5">
+          <div className="flex items-center gap-1 sm:gap-1.5 shrink-0">
             {/* Moderator Shield Button */}
             <button
               onClick={openModModal}
-              className={`p-1 rounded-full text-xs transition-colors flex items-center gap-0.5 ${
+              className={`h-7 px-1.5 rounded-full text-xs transition-colors flex items-center gap-1 shrink-0 ${
                 isMod
-                  ? 'bg-amber-500/20 text-amber-900 border border-amber-500/40 font-semibold px-2'
+                  ? 'bg-amber-500/20 text-amber-900 border border-amber-500/40 font-semibold'
                   : 'hover:bg-ink/5 text-ink-soft/60 hover:text-ink'
               }`}
               title={isMod ? 'Moderator Mode Active (Click to manage)' : 'Campus Moderator Access'}
               aria-label="Moderator Access"
             >
               <span>🛡️</span>
-              {isMod && <span className="hidden xs:inline text-[10px] font-mono font-bold">Mod</span>}
+              {isMod && <span className="text-[10px] font-mono font-bold">Mod</span>}
             </button>
 
             {/* Live Active Campus Badge */}
             <div
-              className="flex items-center gap-1 px-2 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-800 text-[11px] font-mono"
+              className="h-7 flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-800 text-[11px] font-mono shrink-0"
               title={`${activeCount} campus students active right now`}
             >
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse shrink-0" />
               <span className="font-bold">{activeCount}</span>
-              <span className="hidden xs:inline text-[10px] text-emerald-700/80">live</span>
+              <span className="hidden sm:inline text-[10px] text-emerald-700/80">live</span>
             </div>
 
-            {loading ? (
-              <div className="h-7 w-24 bg-ink/5 rounded-full animate-pulse" />
-            ) : (
-              <div className="flex items-center gap-1 px-2.5 py-1 rounded-full bg-green-soft border border-green/20">
-                <span className="text-xs font-mono text-green font-medium max-w-[110px] truncate">
-                  {profile?.handle || 'Anonymous'}
-                </span>
-                <button
-                  onClick={handleReroll}
-                  disabled={rerolling}
-                  className="p-1 hover:bg-green/10 rounded-full text-xs text-ink-soft hover:text-green transition-colors disabled:opacity-50"
-                  title="Roll a new handle (once per hour)"
-                  aria-label="Roll new handle"
-                >
-                  {rerolling ? '⏳' : '🎲'}
-                </button>
-              </div>
-            )}
+            {/* Anonymous Handle + Reroll Button (Stable fixed-height pill, zero layout jump) */}
+            <div className="h-7 flex items-center gap-1 px-2 py-0.5 rounded-full bg-green-soft border border-green/20 shrink-0">
+              <span className="text-xs font-mono text-green font-medium max-w-[70px] xs:max-w-[85px] sm:max-w-[110px] truncate">
+                {profile?.handle || (loading ? 'Loading...' : 'Anonymous')}
+              </span>
+              <button
+                onClick={handleReroll}
+                disabled={rerolling || loading}
+                className="p-0.5 hover:bg-green/10 rounded-full text-xs text-ink-soft hover:text-green transition-colors disabled:opacity-50"
+                title="Roll a new handle (once per hour)"
+                aria-label="Roll new handle"
+              >
+                {rerolling ? '⏳' : '🎲'}
+              </button>
+            </div>
           </div>
         </div>
       </header>

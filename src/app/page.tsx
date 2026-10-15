@@ -15,10 +15,11 @@ function FeedContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
 
-  const sectionParam = (searchParams.get('s') as FeedSection) || 'all';
-  const validSection: FeedSection = ['all', 'crushes', 'gossip', 'campus', 'garba'].includes(sectionParam)
-    ? sectionParam
-    : 'all';
+  const sParam = searchParams.get('s');
+  const validSection: FeedSection =
+    sParam && ['all', 'crushes', 'gossip', 'campus', 'garba'].includes(sParam)
+      ? (sParam as FeedSection)
+      : 'all';
 
   const [section, setSection] = useState<FeedSection>(validSection);
   const [sortBy, setSortBy] = useState<'new' | 'hot'>('new');
@@ -27,31 +28,17 @@ function FeedContent() {
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [seeding, setSeeding] = useState(false);
-  const [showSplash, setShowSplash] = useState(false);
 
+  // Sync section only when URL param changes externally (e.g. back/forward button)
   useEffect(() => {
-    if (typeof window !== 'undefined' && !sessionStorage.getItem('rgpv_splash_dismissed')) {
-      setShowSplash(true);
-    }
-  }, []);
-
-  const dismissSplash = () => {
-    sessionStorage.setItem('rgpv_splash_dismissed', '1');
-    setShowSplash(false);
-  };
-
-  // Sync section with URL param
-  useEffect(() => {
-    if (sectionParam !== section) {
-      setSection(validSection);
-    }
-  }, [sectionParam, validSection, section]);
+    setSection(validSection);
+  }, [validSection]);
 
   const loadFeed = useCallback(async (sec: FeedSection, sort: 'new' | 'hot') => {
     setLoading(true);
     const res = await getFeedPosts(sec, sort);
     if (res.success && res.data) {
-      if (res.data.posts.length === 0) {
+      if (res.data.posts.length === 0 && sec !== 'all') {
         // Auto-seed initial authentic stories so students don't encounter a ghost town
         await seedCampusStoriesIfEmpty();
         const retry = await getFeedPosts(sec, sort);
@@ -73,9 +60,9 @@ function FeedContent() {
   }, [section, sortBy, loadFeed]);
 
   const handleSelectSection = (val: string) => {
-    const sec = val as FeedSection;
+    const sec = (['all', 'crushes', 'gossip', 'campus', 'garba'].includes(val) ? val : 'all') as FeedSection;
     setSection(sec);
-    router.replace(sec === 'all' ? '/' : `/?s=${sec}`);
+    router.replace(sec === 'all' ? '/?s=all' : `/?s=${sec}`, { scroll: false });
   };
 
   const handleSpillStory = async () => {
@@ -107,23 +94,6 @@ function FeedContent() {
     <div className="px-4 py-4">
       {/* Official Campus Notice & 1:00 PM Garba Countdown */}
       <CampusNoticeBanner />
-
-      {/* Skippable Campus Splash Caption */}
-      {showSplash && (
-        <div className="mb-3.5 p-3 rounded-2xl bg-gradient-to-r from-green-soft to-paper border border-green/20 flex items-center justify-between gap-2 shadow-sm animate-fade-in">
-          <p className="font-body text-xs text-ink-soft leading-snug">
-            🤫 <span className="font-medium text-ink">Zero login. Zero tracking.</span> Just pure RGPV & UIT campus chaos.
-          </p>
-          <button
-            onClick={dismissSplash}
-            className="p-1 rounded-full text-ink-soft/50 hover:text-ink hover:bg-ink/5 text-xs transition-colors"
-            title="Dismiss"
-            aria-label="Dismiss banner"
-          >
-            ✕
-          </button>
-        </div>
-      )}
 
       {/* 3 Section Chips */}
       <div className="mb-3">
