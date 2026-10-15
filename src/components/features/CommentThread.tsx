@@ -2,6 +2,9 @@
 
 import { useState } from 'react';
 import ReportModal from '@/components/features/ReportModal';
+import { useMod } from '@/context/ModContext';
+import { adminDeleteComment } from '@/actions/admin';
+import { useToast } from '@/context/ToastContext';
 import type { CommentView } from '@/types';
 
 interface CommentThreadProps {
@@ -15,6 +18,24 @@ export default function CommentThread({ comments, onReply }: CommentThreadProps)
   const [replyText, setReplyText] = useState('');
   const [isSubmittingReply, setIsSubmittingReply] = useState(false);
   const [likedComments, setLikedComments] = useState<Record<string, boolean>>({});
+  const [deletedIds, setDeletedIds] = useState<Set<string>>(new Set());
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const { isMod, modPasscode } = useMod();
+  const { showToast } = useToast();
+
+  const handleDeleteComment = async (commentId: string) => {
+    if (!modPasscode || deletingId) return;
+    if (!window.confirm('Delete this comment as moderator?')) return;
+    setDeletingId(commentId);
+    const res = await adminDeleteComment(commentId, modPasscode);
+    if (res.success) {
+      setDeletedIds(prev => new Set(prev).add(commentId));
+      showToast('Comment deleted by moderator 🗑️', 'success');
+    } else {
+      showToast(res.error || 'Failed to delete comment', 'error');
+    }
+    setDeletingId(null);
+  };
 
   const toggleLike = (commentId: string) => {
     setLikedComments((prev) => ({
@@ -46,10 +67,12 @@ export default function CommentThread({ comments, onReply }: CommentThreadProps)
 
   return (
     <div className="space-y-3 divide-y divide-ink/5">
-      {comments.map((comment) => (
-        <div key={comment.id} className="pt-3 first:pt-0">
-          {/* Top-Level Comment */}
-          <div className="group">
+      {comments.map((comment) => {
+        if (deletedIds.has(comment.id)) return null;
+        return (
+          <div key={comment.id} className="pt-3 first:pt-0">
+            {/* Top-Level Comment */}
+            <div className="group">
             {/* Header */}
             <div className="flex items-center justify-between mb-1">
               <span className="font-mono text-[11px] font-semibold text-ink">
@@ -59,6 +82,16 @@ export default function CommentThread({ comments, onReply }: CommentThreadProps)
                 <span className="font-mono text-[10px] text-ink-soft/60">
                   {getTimeAgo(comment.created_at)}
                 </span>
+                {isMod && (
+                  <button
+                    onClick={() => handleDeleteComment(comment.id)}
+                    disabled={deletingId === comment.id}
+                    className="px-1.5 py-0.5 rounded text-[10px] font-mono font-semibold text-red-600 bg-red-500/10 hover:bg-red-500/20 transition-colors disabled:opacity-50"
+                    title="Delete comment (Mod)"
+                  >
+                    {deletingId === comment.id ? '...' : '🗑️ Delete'}
+                  </button>
+                )}
                 <button
                   onClick={() => setReportTarget(comment.id)}
                   className="p-1 rounded-full hover:bg-coral-soft text-ink-soft/40 hover:text-coral transition-colors"
@@ -153,36 +186,50 @@ export default function CommentThread({ comments, onReply }: CommentThreadProps)
           {/* 1-Level Nested Replies */}
           {comment.replies && comment.replies.length > 0 && (
             <div className="mt-2.5 ml-3 pl-3 border-l-2 border-amber-300/60 dark:border-amber-500/40 space-y-2.5">
-              {comment.replies.map((reply) => (
-                <div key={reply.id} className="pt-1">
-                  <div className="flex items-center justify-between mb-0.5">
-                    <span className="font-mono text-[10px] font-semibold text-ink-soft">
-                      {reply.handle}
-                    </span>
-                    <div className="flex items-center gap-1.5">
-                      <span className="font-mono text-[9px] text-ink-soft/60">
-                        {getTimeAgo(reply.created_at)}
+              {comment.replies.map((reply) => {
+                if (deletedIds.has(reply.id)) return null;
+                return (
+                  <div key={reply.id} className="pt-1">
+                    <div className="flex items-center justify-between mb-0.5">
+                      <span className="font-mono text-[10px] font-semibold text-ink-soft">
+                        {reply.handle}
                       </span>
-                      <button
-                        onClick={() => setReportTarget(reply.id)}
-                        className="p-0.5 rounded text-ink-soft/30 hover:text-coral transition-colors"
-                        title="Report reply"
-                      >
-                        <svg className="w-2.5 h-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z" />
-                        </svg>
-                      </button>
+                      <div className="flex items-center gap-1.5">
+                        <span className="font-mono text-[9px] text-ink-soft/60">
+                          {getTimeAgo(reply.created_at)}
+                        </span>
+                        {isMod && (
+                          <button
+                            onClick={() => handleDeleteComment(reply.id)}
+                            disabled={deletingId === reply.id}
+                            className="px-1 py-0.5 rounded text-[9px] font-mono font-semibold text-red-600 bg-red-500/10 hover:bg-red-500/20 transition-colors disabled:opacity-50"
+                            title="Delete reply (Mod)"
+                          >
+                            {deletingId === reply.id ? '...' : '🗑️'}
+                          </button>
+                        )}
+                        <button
+                          onClick={() => setReportTarget(reply.id)}
+                          className="p-0.5 rounded text-ink-soft/30 hover:text-coral transition-colors"
+                          title="Report reply"
+                        >
+                          <svg className="w-2.5 h-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z" />
+                          </svg>
+                        </button>
+                      </div>
                     </div>
+                    <p className="font-body text-xs text-ink leading-relaxed whitespace-pre-wrap">
+                      {reply.body}
+                    </p>
                   </div>
-                  <p className="font-body text-xs text-ink leading-relaxed whitespace-pre-wrap">
-                    {reply.body}
-                  </p>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </div>
-      ))}
+        );
+      })}
 
       {/* Report modal */}
       {reportTarget && (

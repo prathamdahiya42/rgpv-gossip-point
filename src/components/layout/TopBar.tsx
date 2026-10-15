@@ -4,10 +4,12 @@ import { useState } from 'react';
 import Link from 'next/link';
 import { useAnon } from '@/context/AnonContext';
 import { useToast } from '@/context/ToastContext';
+import { useMod } from '@/context/ModContext';
 
 export default function TopBar() {
   const { profile, loading, authError, activeCount, rerollHandle, retryInit } = useAnon();
   const { showToast } = useToast();
+  const { isMod, openModModal } = useMod();
   const [rerolling, setRerolling] = useState(false);
 
   const handleReroll = async () => {
@@ -34,8 +36,23 @@ export default function TopBar() {
             </span>
           </Link>
 
-          {/* Right side: Live Active Count + Anonymous Handle */}
+          {/* Right side: Mod Button + Live Active Count + Anonymous Handle */}
           <div className="flex items-center gap-1.5">
+            {/* Moderator Shield Button */}
+            <button
+              onClick={openModModal}
+              className={`p-1 rounded-full text-xs transition-colors flex items-center gap-0.5 ${
+                isMod
+                  ? 'bg-amber-500/20 text-amber-900 border border-amber-500/40 font-semibold px-2'
+                  : 'hover:bg-ink/5 text-ink-soft/60 hover:text-ink'
+              }`}
+              title={isMod ? 'Moderator Mode Active (Click to manage)' : 'Campus Moderator Access'}
+              aria-label="Moderator Access"
+            >
+              <span>🛡️</span>
+              {isMod && <span className="hidden xs:inline text-[10px] font-mono font-bold">Mod</span>}
+            </button>
+
             {/* Live Active Campus Badge */}
             <div
               className="flex items-center gap-1 px-2 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-800 text-[11px] font-mono"

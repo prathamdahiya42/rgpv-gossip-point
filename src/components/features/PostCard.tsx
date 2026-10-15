@@ -6,7 +6,9 @@ import NoteCard from '@/components/ui/NoteCard';
 import Badge from '@/components/ui/Badge';
 import ReactionBar from '@/components/features/ReactionBar';
 import { createComment } from '@/actions/comments';
+import { adminDeletePost } from '@/actions/admin';
 import { useToast } from '@/context/ToastContext';
+import { useMod } from '@/context/ModContext';
 import { HOT_THRESHOLD, POST_SECTIONS } from '@/types';
 import type { PostView } from '@/types';
 
@@ -23,7 +25,10 @@ export default function PostCard({ post, index = 0 }: PostCardProps) {
   const [commentText, setCommentText] = useState('');
   const [commentCount, setCommentCount] = useState(post.comment_count);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isRemoved, setIsRemoved] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
   const { showToast } = useToast();
+  const { isMod, modPasscode, setEditingPost } = useMod();
 
   const totalReactions = Object.values(post.reaction_counts || {}).reduce(
     (sum, count) => sum + (count || 0),
@@ -56,6 +61,10 @@ export default function PostCard({ post, index = 0 }: PostCardProps) {
     setCommentText(prev => `${prev}${emoji}`);
   };
 
+  if (isRemoved) {
+    return null;
+  }
+
   return (
     <NoteCard index={index} isHot={isHot}>
       {/* Header */}
@@ -71,7 +80,48 @@ export default function PostCard({ post, index = 0 }: PostCardProps) {
             {sectionMeta?.label || post.section}
           </Badge>
         </Link>
-        {isHot && <Badge variant="hot">HOT 🔥</Badge>}
+        <div className="flex items-center gap-1.5">
+          {isHot && <Badge variant="hot">HOT 🔥</Badge>}
+          {isMod && (
+            <div className="flex items-center gap-1">
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  setEditingPost({ id: post.id, body: post.body });
+                }}
+                className="px-1.5 py-0.5 rounded bg-amber-500/15 hover:bg-amber-500/25 text-amber-900 text-[10px] font-mono font-semibold transition-colors"
+                title="Edit post text (Mod)"
+              >
+                ✏️ Edit
+              </button>
+              <button
+                type="button"
+                onClick={async (e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  if (!modPasscode || isDeleting) return;
+                  if (!window.confirm('Delete this post as moderator?')) return;
+                  setIsDeleting(true);
+                  const res = await adminDeletePost(post.id, modPasscode);
+                  if (res.success) {
+                    setIsRemoved(true);
+                    showToast('Post removed by moderator 🗑️', 'success');
+                  } else {
+                    showToast(res.error || 'Failed to remove', 'error');
+                  }
+                  setIsDeleting(false);
+                }}
+                disabled={isDeleting}
+                className="px-1.5 py-0.5 rounded bg-red-500/15 hover:bg-red-500/25 text-red-700 text-[10px] font-mono font-semibold transition-colors disabled:opacity-50"
+                title="Remove post (Mod)"
+              >
+                {isDeleting ? '...' : '🗑️ Remove'}
+              </button>
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Post Body (with seamless inline expansion) */}

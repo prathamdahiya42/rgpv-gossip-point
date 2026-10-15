@@ -12,6 +12,8 @@ import CommentThread from '@/components/features/CommentThread';
 import ReportModal from '@/components/features/ReportModal';
 import { useToast } from '@/context/ToastContext';
 import { useAnon } from '@/context/AnonContext';
+import { useMod } from '@/context/ModContext';
+import { adminDeletePost } from '@/actions/admin';
 import { HOT_THRESHOLD, POST_SECTIONS } from '@/types';
 import type { PostView, CommentView } from '@/types';
 
@@ -29,7 +31,9 @@ export default function PostDetailPage() {
   const [showReport, setShowReport] = useState(false);
   const [loading, setLoading] = useState(true);
   const [isPending, startTransition] = useTransition();
+  const [isDeletingPost, setIsDeletingPost] = useState(false);
   const { showToast } = useToast();
+  const { isMod, modPasscode, setEditingPost } = useMod();
 
   useEffect(() => {
     async function load() {
@@ -188,6 +192,39 @@ export default function PostDetailPage() {
           </div>
           <div className="flex items-center gap-2">
             {isHot && <Badge variant="hot">HOT 🔥</Badge>}
+            {isMod && (
+              <div className="flex items-center gap-1.5 mr-1">
+                <button
+                  type="button"
+                  onClick={() => setEditingPost({ id: post.id, body: post.body })}
+                  className="px-2 py-1 rounded bg-amber-500/15 hover:bg-amber-500/25 text-amber-900 text-xs font-mono font-semibold transition-colors"
+                  title="Edit post text (Mod)"
+                >
+                  ✏️ Edit
+                </button>
+                <button
+                  type="button"
+                  onClick={async () => {
+                    if (!modPasscode || isDeletingPost) return;
+                    if (!window.confirm('Delete this post as moderator?')) return;
+                    setIsDeletingPost(true);
+                    const res = await adminDeletePost(post.id, modPasscode);
+                    if (res.success) {
+                      showToast('Post removed by moderator 🗑️', 'success');
+                      router.push('/');
+                    } else {
+                      showToast(res.error || 'Failed to remove post', 'error');
+                      setIsDeletingPost(false);
+                    }
+                  }}
+                  disabled={isDeletingPost}
+                  className="px-2 py-1 rounded bg-red-500/15 hover:bg-red-500/25 text-red-700 text-xs font-mono font-semibold transition-colors disabled:opacity-50"
+                  title="Remove post (Mod)"
+                >
+                  {isDeletingPost ? '...' : '🗑️ Remove'}
+                </button>
+              </div>
+            )}
             <button
               onClick={() => setShowReport(true)}
               className="p-1.5 rounded-full hover:bg-coral-soft text-ink-soft/40 hover:text-coral transition-colors"

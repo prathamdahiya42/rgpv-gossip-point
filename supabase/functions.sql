@@ -358,3 +358,49 @@ begin
   end if;
 end;
 $$;
+
+-- ============================================================
+-- 6. ADMIN / SENIOR MODERATION RPC
+-- Allows authorized moderators to delete or edit inappropriate content
+-- ============================================================
+create or replace function public.admin_moderate_content(
+  p_target_type text,      -- 'post' or 'comment'
+  p_target_id uuid,
+  p_action text,           -- 'hide', 'delete', 'edit'
+  p_new_body text default null
+)
+returns jsonb
+language plpgsql
+security definer
+as $$
+begin
+  if p_target_type = 'post' then
+    if p_action in ('hide', 'delete') then
+      update public.posts
+      set is_hidden = true
+      where id = p_target_id;
+      return jsonb_build_object('success', true, 'action', p_action);
+    elsif p_action = 'edit' and p_new_body is not null then
+      update public.posts
+      set body = p_new_body
+      where id = p_target_id;
+      return jsonb_build_object('success', true, 'action', 'edit');
+    end if;
+  elsif p_target_type = 'comment' then
+    if p_action in ('hide', 'delete') then
+      update public.comments
+      set is_hidden = true
+      where id = p_target_id;
+      return jsonb_build_object('success', true, 'action', p_action);
+    elsif p_action = 'edit' and p_new_body is not null then
+      update public.comments
+      set body = p_new_body
+      where id = p_target_id;
+      return jsonb_build_object('success', true, 'action', 'edit');
+    end if;
+  end if;
+
+  return jsonb_build_object('success', false, 'error', 'Invalid action or target');
+end;
+$$;
+

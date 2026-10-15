@@ -2,6 +2,9 @@ import type { Metadata } from "next";
 import "./globals.css";
 import { AnonProvider } from "@/context/AnonContext";
 import { ToastProvider } from "@/context/ToastContext";
+import { ModProvider } from "@/context/ModContext";
+import ModModal from "@/components/mod/ModModal";
+import EditPostModal from "@/components/mod/EditPostModal";
 import TopBar from "@/components/layout/TopBar";
 import BottomNav from "@/components/layout/BottomNav";
 
@@ -19,13 +22,17 @@ export const metadata: Metadata = {
 function LayoutShell({ children }: { children: React.ReactNode }) {
   return (
     <AnonProvider>
-      <ToastProvider>
-        <TopBar />
-        <main className="flex-1 max-w-md mx-auto w-full pb-20">
-          {children}
-        </main>
-        <BottomNav />
-      </ToastProvider>
+      <ModProvider>
+        <ToastProvider>
+          <TopBar />
+          <main className="flex-1 max-w-md mx-auto w-full pb-20">
+            {children}
+          </main>
+          <BottomNav />
+          <ModModal />
+          <EditPostModal />
+        </ToastProvider>
+      </ModProvider>
     </AnonProvider>
   );
 }
