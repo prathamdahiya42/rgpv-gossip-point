@@ -9,18 +9,17 @@ export async function createComment(
   postId: string,
   body: string,
   parentId?: string
-): Promise<ServerActionResponse> {
+): Promise<ServerActionResponse<{ id?: string }>> {
   try {
-    const profile = await requireProfile();
     const validated = commentSchema.safeParse({ postId, body: body.trim() });
-
     if (!validated.success) {
       return { success: false, error: validated.error.issues[0]?.message || 'Invalid comment' };
     }
 
+    const profile = await requireProfile();
     const supabase = await createClient();
 
-    // Check rate limit: max 20 comments per hour
+    // Check rate limit: max 30 comments per hour
     const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
     const { count, error: countError } = await supabase
       .from('comments')
@@ -28,11 +27,11 @@ export async function createComment(
       .eq('author_id', profile.id)
       .gt('created_at', oneHourAgo);
 
-    if (!countError && count !== null && count >= 20) {
-      return { success: false, error: 'Rate limit reached: max 20 comments per hour' };
+    if (!countError && count !== null && count >= 30) {
+      return { success: false, error: 'Rate limit reached: max 30 comments per hour' };
     }
 
-    // Try inserting with parent_id, fallback without if column not yet migrated
+    // Try inserting with parent_id, fallback without if column not yet in DB
     const insertPayload: Record<string, any> = {
       post_id: validated.data.postId,
       author_id: profile.id,
@@ -42,27 +41,21 @@ export async function createComment(
       insertPayload.parent_id = parentId;
     }
 
-    const { error: insertError } = await supabase
-      .from('comments')
-      .insert(insertPayload);
+    let insertRes = await supabase.from('comments').insert(insertPayload).select('id').maybeSingle();
 
-    if (insertError) {
-      // If error was missing parent_id column, retry without parent_id
-      if (parentId && insertError.message?.includes('parent_id')) {
-        const { error: retryError } = await supabase.from('comments').insert({
-          post_id: validated.data.postId,
-          author_id: profile.id,
-          body: validated.data.body,
-        });
-        if (retryError) throw retryError;
-      } else {
-        throw insertError;
+    if (insertRes.error) {
+      console.warn('Comment insert note, retrying with fallback:', insertRes.error.message);
+      delete insertPayload.parent_id;
+      insertRes = await supabase.from('comments').insert(insertPayload).select('id').maybeSingle();
+      if (insertRes.error) {
+        throw new Error(insertRes.error.message);
       }
     }
 
-    return { success: true };
+    return { success: true, data: { id: insertRes.data?.id } };
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : 'Failed to post comment';
+    console.error('createComment error:', message);
     return { success: false, error: message };
   }
 }
@@ -71,18 +64,33 @@ export async function getComments(postId: string): Promise<ServerActionResponse<
   try {
     const supabase = await createClient();
 
-    // Query non-hidden comments
-    const { data, error } = await supabase
+    let rawData: any[] | null = null;
+
+    // 1. Query non-hidden comments (attempt with parent_id)
+    const primary = await supabase
       .from('comments')
       .select('id, post_id, author_id, parent_id, body, created_at, is_hidden')
       .eq('post_id', postId)
       .eq('is_hidden', false)
       .order('created_at', { ascending: true });
 
-    if (error) throw error;
+    if (!primary.error) {
+      rawData = primary.data;
+    } else {
+      // 2. If parent_id column does not exist in DB, fallback to query without parent_id
+      const fallback = await supabase
+        .from('comments')
+        .select('id, post_id, author_id, body, created_at, is_hidden')
+        .eq('post_id', postId)
+        .eq('is_hidden', false)
+        .order('created_at', { ascending: true });
+
+      if (fallback.error) throw fallback.error;
+      rawData = fallback.data;
+    }
 
     // Fetch author handles safely
-    const authorIds = Array.from(new Set((data || []).map((r: any) => r.author_id).filter(Boolean)));
+    const authorIds = Array.from(new Set((rawData || []).map((r: any) => r.author_id).filter(Boolean)));
     const handleMap = new Map<string, string>();
     if (authorIds.length > 0) {
       const { data: profs } = await supabase
@@ -93,7 +101,7 @@ export async function getComments(postId: string): Promise<ServerActionResponse<
     }
 
     // Build threaded comments (parent comments with 1-level nested replies)
-    const rawComments: CommentView[] = (data || []).map((row: any) => ({
+    const rawComments: CommentView[] = (rawData || []).map((row: any) => ({
       id: row.id,
       post_id: row.post_id,
       parent_id: row.parent_id || null,

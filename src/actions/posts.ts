@@ -3,7 +3,7 @@
 import { createClient } from '@/lib/supabase/server';
 import { requireProfile } from '@/lib/auth/session';
 import { postSchema } from '@/lib/validation';
-import type { ServerActionResponse, PostSection, PostView, ReactionEmoji } from '@/types';
+import type { ServerActionResponse, PostSection, PostView, ReactionEmoji, FeedSection } from '@/types';
 
 export async function createPost(
   section: PostSection,
@@ -51,7 +51,7 @@ export async function createPost(
 }
 
 export async function getFeedPosts(
-  section: PostSection = 'gossip',
+  section: FeedSection = 'all',
   sortBy: 'new' | 'hot' = 'new',
   cursor?: string,
   limit: number = 20
@@ -110,10 +110,13 @@ export async function getFeedPosts(
     let query = supabase
       .from('posts')
       .select('id, section, body, author_id, created_at, is_hidden')
-      .eq('section', section)
       .eq('is_hidden', false)
       .order('created_at', { ascending: false })
       .limit(limit);
+
+    if (section !== 'all') {
+      query = query.eq('section', section);
+    }
 
     if (cursor) {
       query = query.lt('created_at', cursor);

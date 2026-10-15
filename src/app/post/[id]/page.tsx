@@ -11,6 +11,7 @@ import ReactionBar from '@/components/features/ReactionBar';
 import CommentThread from '@/components/features/CommentThread';
 import ReportModal from '@/components/features/ReportModal';
 import { useToast } from '@/context/ToastContext';
+import { useAnon } from '@/context/AnonContext';
 import { HOT_THRESHOLD, POST_SECTIONS } from '@/types';
 import type { PostView, CommentView } from '@/types';
 
@@ -20,6 +21,7 @@ export default function PostDetailPage() {
   const params = useParams();
   const router = useRouter();
   const postId = params.id as string;
+  const { profile } = useAnon();
 
   const [post, setPost] = useState<PostView | null>(null);
   const [comments, setComments] = useState<CommentView[]>([]);
@@ -49,25 +51,62 @@ export default function PostDetailPage() {
 
   const handleComment = (e?: React.FormEvent) => {
     if (e) e.preventDefault();
-    if (!newComment.trim() || isPending) return;
+    const commentBody = newComment.trim();
+    if (!commentBody || isPending) return;
+
+    // Optimistic immediate update
+    const tempComment: CommentView = {
+      id: `temp-${Date.now()}`,
+      post_id: postId,
+      parent_id: null,
+      body: commentBody,
+      created_at: new Date().toISOString(),
+      handle: profile?.handle || 'You',
+      replies: [],
+    };
+
+    setComments(prev => [...prev, tempComment]);
+    setNewComment('');
 
     startTransition(async () => {
-      const result = await createComment(postId, newComment.trim());
+      const result = await createComment(postId, commentBody);
       if (result.success) {
-        setNewComment('');
         const commentsResult = await getComments(postId);
         if (commentsResult.success && commentsResult.data) {
           setComments(commentsResult.data);
         }
         showToast('Comment dropped 💬', 'success');
       } else {
+        // Revert on failure
+        setComments(prev => prev.filter(c => c.id !== tempComment.id));
+        setNewComment(commentBody);
         showToast(result.error || 'Failed to comment', 'error');
       }
     });
   };
 
   const handleReply = async (parentId: string, body: string): Promise<boolean> => {
-    const result = await createComment(postId, body, parentId);
+    const replyBody = body.trim();
+    if (!replyBody) return false;
+
+    // Optimistic immediate reply
+    const tempReply: CommentView = {
+      id: `temp-${Date.now()}`,
+      post_id: postId,
+      parent_id: parentId,
+      body: replyBody,
+      created_at: new Date().toISOString(),
+      handle: profile?.handle || 'You',
+    };
+
+    setComments(prev => prev.map(c => {
+      if (c.id === parentId) {
+        return { ...c, replies: [...(c.replies || []), tempReply] };
+      }
+      return c;
+    }));
+
+    const result = await createComment(postId, replyBody, parentId);
     if (result.success) {
       const commentsResult = await getComments(postId);
       if (commentsResult.success && commentsResult.data) {
@@ -76,6 +115,13 @@ export default function PostDetailPage() {
       showToast('Reply posted ↩️', 'success');
       return true;
     } else {
+      // Revert on failure
+      setComments(prev => prev.map(c => {
+        if (c.id === parentId) {
+          return { ...c, replies: (c.replies || []).filter(r => r.id !== tempReply.id) };
+        }
+        return c;
+      }));
       showToast(result.error || 'Failed to reply', 'error');
       return false;
     }

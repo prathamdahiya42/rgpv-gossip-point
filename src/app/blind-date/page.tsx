@@ -315,15 +315,30 @@ export default function BlindDatePage() {
         </button>
         <button
           onClick={() => setMode('music')}
-          className={`flex-1 py-2 px-2 rounded-xl font-display text-[11px] font-bold transition-all flex items-center justify-center gap-1 ${
+          className={`flex-1 py-2 px-1.5 rounded-xl font-display text-[11px] font-bold transition-all flex flex-col sm:flex-row items-center justify-center gap-1 ${
             mode === 'music'
               ? 'bg-gradient-to-r from-purple-600 to-indigo-600 text-white shadow-xs'
               : 'text-ink-soft hover:text-ink'
           }`}
         >
-          <span>🎧</span> Music
+          <div className="flex items-center gap-1">
+            <span>🎧</span> Music
+          </div>
+          <span className="text-[9px] px-1.5 py-0.2 rounded-full bg-amber-400/20 text-amber-600 dark:text-amber-300 font-mono">
+            Working on it
+          </span>
         </button>
       </div>
+
+      {/* Cross-Matching Banner for Random & Garba */}
+      {mode !== 'music' && (
+        <div className="mb-5 p-3 rounded-2xl bg-gradient-to-r from-green-soft to-amber-50 dark:to-amber-950/20 border border-green/20 flex items-center gap-2.5 shadow-xs animate-fade-in">
+          <span className="text-xl">⚡</span>
+          <p className="font-body text-xs text-ink-soft leading-snug">
+            <strong className="text-ink font-semibold">Cross-Matching Active:</strong> Random & Garba daters are now paired in a shared pool so you find matches in seconds!
+          </p>
+        </div>
+      )}
 
       {/* Hero Icon & Title */}
       <div className="text-center mb-6">
@@ -342,44 +357,42 @@ export default function BlindDatePage() {
         <p className={`font-display text-xs font-bold uppercase tracking-wider mb-2 ${
           mode === 'garba' ? 'text-amber-700' : mode === 'music' ? 'text-purple-600' : 'text-coral'
         }`}>
-          {mode === 'music' ? '5-Minute Co-Listening Chat' : '5-Minute Anonymous Live Chat'}
+          {mode === 'music' ? 'Still working on it' : '5-Minute Anonymous Live Chat'}
         </p>
         <p className="font-body text-xs text-ink-soft max-w-xs mx-auto">
           {mode === 'garba'
             ? 'Pair with another RGPV student looking for a Garba dance partner, passes, or squad.'
             : mode === 'music'
-            ? 'Pair with someone who vibes to your music. Share YouTube songs and co-listen in real time!'
+            ? 'We are still working on the ad-free, 0-lag synchronized co-listening experience.'
             : 'Random stranger. No profiles. No photos. Just conversation.'}
         </p>
       </div>
 
       {/* Music Vibe Selector (When Music Mode is Selected) */}
       {mode === 'music' && (
-        <div className="mb-6 space-y-2 animate-fade-in">
-          <label className="block font-mono text-[10px] uppercase font-bold text-ink-soft">
-            Choose your music vibe to match with:
-          </label>
-          <div className="grid grid-cols-2 gap-2">
-            {MUSIC_VIBES.map((v) => (
-              <button
-                key={v.id}
-                type="button"
-                onClick={() => setSelectedVibe(v.id as MusicVibe)}
-                className={`p-2.5 rounded-xl border text-left transition-all ${
-                  selectedVibe === v.id
-                    ? 'bg-purple-50 dark:bg-purple-950/40 border-purple-500 text-purple-900 dark:text-purple-200 shadow-xs'
-                    : 'bg-card border-ink/5 hover:border-ink/15 text-ink'
-                }`}
-              >
-                <div className="flex items-center gap-1.5 font-display text-xs font-bold mb-0.5">
-                  <span>{v.icon}</span>
-                  <span className="truncate">{v.label}</span>
-                </div>
-                <p className="font-body text-[10px] text-ink-soft line-clamp-1">
-                  {v.description}
-                </p>
-              </button>
-            ))}
+        <div className="mb-6 p-5 rounded-2xl bg-purple-50 dark:bg-purple-950/40 border border-purple-200 dark:border-purple-800 text-center animate-fade-in space-y-3">
+          <div className="text-3xl">🚧</div>
+          <h3 className="font-display text-sm font-bold text-purple-900 dark:text-purple-200">
+            Music Match — Still working on it.
+          </h3>
+          <p className="font-body text-xs text-purple-700 dark:text-purple-300 max-w-xs mx-auto leading-relaxed">
+            We are putting the final touches on ad-free, synchronized YouTube co-listening so it works reliably on all phones and networks.
+          </p>
+          <div className="pt-2 flex flex-col sm:flex-row gap-2 justify-center">
+            <button
+              type="button"
+              onClick={() => setMode('general')}
+              className="px-4 py-2 rounded-xl bg-coral text-white font-display text-xs font-bold hover:bg-coral/90 transition-colors shadow-xs"
+            >
+              🎭 Jump into Random Match
+            </button>
+            <button
+              type="button"
+              onClick={() => setMode('garba')}
+              className="px-4 py-2 rounded-xl bg-amber-500 text-white font-display text-xs font-bold hover:bg-amber-600 transition-colors shadow-xs"
+            >
+              🪩 Jump into Garba Match
+            </button>
           </div>
         </div>
       )}
@@ -421,39 +434,37 @@ export default function BlindDatePage() {
         </div>
       </div>
 
-      {/* 18+ Checkbox */}
-      <div className="mb-6 flex items-center gap-2.5 px-2">
-        <input
-          id="18plus"
-          type="checkbox"
-          checked={is18Plus}
-          onChange={(e) => handleCheckboxChange(e.target.checked)}
-          className="w-4 h-4 rounded text-coral accent-coral focus:ring-coral/30 cursor-pointer"
-        />
-        <label htmlFor="18plus" className="font-body text-xs text-ink cursor-pointer select-none">
-          I confirm that I am <span className="font-semibold text-coral">18 years or older</span>
-        </label>
-      </div>
+      {mode !== 'music' && (
+        <>
+          {/* 18+ Checkbox */}
+          <div className="mb-6 flex items-center gap-2.5 px-2">
+            <input
+              id="18plus"
+              type="checkbox"
+              checked={is18Plus}
+              onChange={(e) => handleCheckboxChange(e.target.checked)}
+              className="w-4 h-4 rounded text-coral accent-coral focus:ring-coral/30 cursor-pointer"
+            />
+            <label htmlFor="18plus" className="font-body text-xs text-ink cursor-pointer select-none">
+              I confirm that I am <span className="font-semibold text-coral">18 years or older</span>
+            </label>
+          </div>
 
-      {/* Action Button */}
-      <Button
-        onClick={startSearching}
-        disabled={!is18Plus}
-        className={`w-full shadow-lg ${
-          mode === 'garba'
-            ? 'bg-gradient-to-r from-coral to-amber-500 hover:from-coral/90 hover:to-amber-500/90 shadow-amber-500/20 text-white'
-            : mode === 'music'
-            ? 'bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 shadow-purple-500/20 text-white'
-            : 'shadow-coral/20'
-        }`}
-        size="lg"
-      >
-        {mode === 'garba'
-          ? 'Find Garba Partner 🪩'
-          : mode === 'music'
-          ? 'Find Music Match 🎧'
-          : 'Find a match 💘'}
-      </Button>
+          {/* Action Button */}
+          <Button
+            onClick={startSearching}
+            disabled={!is18Plus}
+            className={`w-full shadow-lg ${
+              mode === 'garba'
+                ? 'bg-gradient-to-r from-coral to-amber-500 hover:from-coral/90 hover:to-amber-500/90 shadow-amber-500/20 text-white'
+                : 'shadow-coral/20'
+            }`}
+            size="lg"
+          >
+            {mode === 'garba' ? 'Find Garba Partner 🪩' : 'Find a match 💘'}
+          </Button>
+        </>
+      )}
 
       <p className="font-mono text-[9px] text-ink-soft/40 text-center mt-6">
         RGPV / UIT Bhopal students only · Automated bot matching

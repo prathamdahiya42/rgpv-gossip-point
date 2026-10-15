@@ -4,6 +4,8 @@ export * from './database';
 // App-level utility types & constants
 // ============================================================
 
+export type FeedSection = 'all' | import('./database').PostSection;
+
 export interface ServerActionResponse<T = void> {
   success: boolean;
   data?: T;
@@ -19,6 +21,7 @@ export interface PaginatedPosts {
 export const REACTION_EMOJIS = ['🔥', '😂', '💀'] as const;
 
 export const POST_SECTIONS = [
+  { id: 'all', label: 'All Confessions 🌟', shortLabel: 'All' },
   { id: 'crushes', label: 'Crushes 💘', shortLabel: 'Crushes' },
   { id: 'gossip', label: 'Gossip 🗣️', shortLabel: 'Gossip' },
   { id: 'campus', label: 'Campus 🏫', shortLabel: 'Campus' },

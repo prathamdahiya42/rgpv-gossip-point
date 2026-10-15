@@ -189,12 +189,15 @@ begin
     limit 1;
   end if;
 
-  -- Fallback: any waiting user in the same mode
+  -- Fallback: any waiting user in the same mode OR cross-match between general & garba
   if v_partner_id is null then
     select q.user_id, q.vibe into v_partner_id, v_partner_vibe
     from public.match_queue q
     where q.status = 'waiting'
-      and q.mode = p_mode
+      and (
+        q.mode = p_mode
+        or (p_mode in ('general', 'garba') and q.mode in ('general', 'garba'))
+      )
       and q.user_id <> v_current_user_id
       and q.created_at >= (now() - interval '45 seconds')
       and not exists (
@@ -321,7 +324,7 @@ begin
     join public.profiles pr on p.author_id = pr.id
     left join public.reactions r on r.post_id = p.id
     left join public.comments c on c.post_id = p.id and c.is_hidden = false
-    where p.section = p_section
+    where (p_section = 'all' or p.section = p_section)
       and p.is_hidden = false
       and (p_cursor is null or p.created_at < p_cursor)
     group by p.id, pr.handle
@@ -346,7 +349,7 @@ begin
     join public.profiles pr on p.author_id = pr.id
     left join public.reactions r on r.post_id = p.id
     left join public.comments c on c.post_id = p.id and c.is_hidden = false
-    where p.section = p_section
+    where (p_section = 'all' or p.section = p_section)
       and p.is_hidden = false
       and (p_cursor is null or p.created_at < p_cursor)
     group by p.id, pr.handle

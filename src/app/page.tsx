@@ -6,7 +6,7 @@ import { getFeedPosts } from '@/actions/posts';
 import PostCard from '@/components/features/PostCard';
 import FilterChips from '@/components/ui/FilterChips';
 import { POST_SECTIONS } from '@/types';
-import type { PostSection, PostView } from '@/types';
+import type { FeedSection, PostSection, PostView } from '@/types';
 
 import { seedSingleCampusStory, seedCampusStoriesIfEmpty } from '@/actions/seed';
 
@@ -14,12 +14,12 @@ function FeedContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
 
-  const sectionParam = (searchParams.get('s') as PostSection) || 'gossip';
-  const validSection: PostSection = ['crushes', 'gossip', 'campus', 'garba'].includes(sectionParam)
+  const sectionParam = (searchParams.get('s') as FeedSection) || 'all';
+  const validSection: FeedSection = ['all', 'crushes', 'gossip', 'campus', 'garba'].includes(sectionParam)
     ? sectionParam
-    : 'gossip';
+    : 'all';
 
-  const [section, setSection] = useState<PostSection>(validSection);
+  const [section, setSection] = useState<FeedSection>(validSection);
   const [sortBy, setSortBy] = useState<'new' | 'hot'>('new');
   const [posts, setPosts] = useState<PostView[]>([]);
   const [nextCursor, setNextCursor] = useState<string | null>(null);
@@ -46,7 +46,7 @@ function FeedContent() {
     }
   }, [sectionParam, validSection, section]);
 
-  const loadFeed = useCallback(async (sec: PostSection, sort: 'new' | 'hot') => {
+  const loadFeed = useCallback(async (sec: FeedSection, sort: 'new' | 'hot') => {
     setLoading(true);
     const res = await getFeedPosts(sec, sort);
     if (res.success && res.data) {
@@ -72,15 +72,16 @@ function FeedContent() {
   }, [section, sortBy, loadFeed]);
 
   const handleSelectSection = (val: string) => {
-    const sec = val as PostSection;
+    const sec = val as FeedSection;
     setSection(sec);
-    router.replace(`/?s=${sec}`);
+    router.replace(sec === 'all' ? '/' : `/?s=${sec}`);
   };
 
   const handleSpillStory = async () => {
     if (seeding) return;
     setSeeding(true);
-    await seedSingleCampusStory(section);
+    const seedSec: PostSection | undefined = section === 'all' ? undefined : (section as PostSection);
+    await seedSingleCampusStory(seedSec);
     await loadFeed(section, sortBy);
     setSeeding(false);
   };
@@ -132,6 +133,7 @@ function FeedContent() {
       {/* Sort Toggle (New / Hot) */}
       <div className="flex items-center justify-between px-1 py-1 mb-3">
         <span className="font-mono text-[11px] text-ink-soft">
+          {section === 'all' && '🌟 All confessions from each & every section'}
           {section === 'crushes' && '💘 Anonymous confessions'}
           {section === 'gossip' && '🗣️ Spicy campus tea'}
           {section === 'campus' && '🏫 College updates & life'}

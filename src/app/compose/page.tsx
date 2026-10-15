@@ -72,11 +72,11 @@ export default function ComposePage() {
           Section
         </label>
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-          {POST_SECTIONS.map((sec) => (
+          {POST_SECTIONS.filter(s => s.id !== 'all').map((sec) => (
             <button
               key={sec.id}
               type="button"
-              onClick={() => setSection(sec.id)}
+              onClick={() => setSection(sec.id as PostSection)}
               className={`
                 py-2.5 px-2 rounded-xl font-display text-xs font-semibold
                 border transition-all text-center
